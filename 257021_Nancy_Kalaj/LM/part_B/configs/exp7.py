@@ -1,4 +1,4 @@
-# exp6: variational (locked) dropout p=0.5 + weight tying
+# exp7: variational (locked) dropout p=0.5 + weight tying
 CFG = {
     "model_type":    "LM_LSTM",
     "emb_size":      300,

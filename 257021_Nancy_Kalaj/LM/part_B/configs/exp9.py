@@ -1,4 +1,4 @@
-# exp8: same as exp7 but ASGD lr tuned to 2e-3
+# exp9: same as exp7 but ASGD lr tuned to 2e-3
 CFG = {
     "model_type":    "LM_LSTM",
     "emb_size":      300,

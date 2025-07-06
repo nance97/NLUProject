@@ -1,4 +1,4 @@
-# exp5: weight tying (hid_size==emb_size), tune wd=0.05
+# exp6: weight tying (hid_size==emb_size), tune wd=0.05
 CFG = {
     "model_type":    "LM_LSTM",
     "emb_size":      300,

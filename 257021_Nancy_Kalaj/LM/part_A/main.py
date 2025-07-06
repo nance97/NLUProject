@@ -10,6 +10,7 @@ if __name__ == "__main__":
     # Parse --exp to select which experiment configuration to use
     parser = argparse.ArgumentParser()
     parser.add_argument("--exp", required=True, help="Name of config, e.g. exp3")
+    parser.add_argument("--test", action="store_true", help="Skip training; load and evaluate saved model on test set")
     args = parser.parse_args()
 
     # Dynamically load the config module for this experiment
@@ -40,6 +41,17 @@ if __name__ == "__main__":
     # Initialize weights for reproducibility and stability
     init_weights(model)
 
+    # Test the best saved version of the model
+    if args.test:
+        # load checkpoint
+        ckpt = f"bin/{args.exp}_best_model.pt"
+        state = torch.load(ckpt, map_location=DEVICE)
+        model.load_state_dict(state)
+        model.eval()
+        test_ppl = eval_loop(loader_test, model, nn.CrossEntropyLoss(ignore_index=pad_idx))
+        print(f"[TEST] {args.exp} → Test PPL = {test_ppl:.2f}")
+        exit(0)
+
     # Set up optimizer: either SGD or AdamW (with optional weight decay)
     if cfg["optimizer"] == "SGD":
         optimizer = optim.SGD(model.parameters(), lr=cfg["lr"])
@@ -54,7 +66,7 @@ if __name__ == "__main__":
 
     # Cross-entropy loss, ignoring pad tokens
     criterion_train = nn.CrossEntropyLoss(ignore_index=pad_idx)
-    criterion_dev   = nn.CrossEntropyLoss(ignore_index=pad_idx)
+    criterion_dev = nn.CrossEntropyLoss(ignore_index=pad_idx)
 
     # Training with early stopping based on dev set perplexity
     n_epochs = 100

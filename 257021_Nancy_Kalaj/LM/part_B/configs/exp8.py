@@ -1,4 +1,4 @@
-# exp7: NT‐AvSGD (switch after patience=3) with asgd_lr=1e-3
+# exp8: NT‐AvSGD (switch after patience=3) with asgd_lr=1e-3
 CFG = {
     "model_type":    "LM_LSTM",
     "emb_size":      300,
