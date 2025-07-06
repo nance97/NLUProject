@@ -3,7 +3,7 @@ import copy
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from LM.part_A.model import LM_LSTM, RNN_cell
+from model import LM_LSTM, RNN_cell
 
 
 def build_model(cfg, vocab_size, pad_idx):
