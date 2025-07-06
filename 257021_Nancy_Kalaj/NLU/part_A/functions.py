@@ -46,51 +46,46 @@ def train_epoch(loader, model, opt, slot_cr, intent_cr, clip):
         losses.append((l_slot + l_intent).item())
     return sum(losses) / len(losses)
 
-def eval_loop(loader, criterion_slots, criterion_intents, model, lang):
+def eval_model(loader, model, slot_cr, intent_cr, lang):
     from conll import evaluate
 
     model.eval()
-    loss_array   = []
-    ref_intents  = []
-    hyp_intents  = []
-    ref_slots    = []
-    hyp_slots    = []
-
+    all_ref, all_hyp = [], []
+    ref_ints, hyp_ints = [], []
     with torch.no_grad():
-        for sample in loader:
-            # forward pass
-            slots, intents = model(sample["utterances"], sample["slots_len"])
-            # losses (if you need them)
-            loss_slot   = criterion_slots(slots,  sample["y_slots"])
-            loss_intent = criterion_intents(intents, sample["intents"])
-            loss_array.append((loss_slot + loss_intent).item())
+        for b in loader:
+            s_logits, i_logits = model(b["utterances"], b["slots_len"])
+            preds_int = i_logits.argmax(-1).tolist()
+            ref_ints += [lang.id2intent[i] for i in b["intents"].tolist()]
+            hyp_ints += [lang.id2intent[p] for p in preds_int]
 
-            # intent inference
-            out_ints = torch.argmax(intents, dim=1).tolist()
-            gt_ints  = sample["intents"].tolist()
-            ref_intents.extend([lang.id2intent[i] for i in gt_ints])
-            hyp_intents.extend([lang.id2intent[i] for i in out_ints])
+            sl = s_logits.argmax(1)
+            for i in range(len(b["slots_len"])):
+                L        = b["slots_len"][i].item()
+                toks     = [lang.id2word[idx] for idx in b["utterances"][i,:L].tolist()]
+                gold_ids = b["y_slots"][i,:L].tolist()
+                pred_ids = sl[i,:L].tolist()
 
-            # slot inference
-            output_slots = torch.argmax(slots, dim=1)  # (B, T)
-            for idx in range(len(sample["slots_len"])):
-                L        = sample["slots_len"][idx].item()
-                utt_ids  = sample["utterances"][idx, :L].tolist()
-                gt_ids   = sample["y_slots"][idx, :L].tolist()
-                # map IDs back to tags/words
-                gt_tags  = [lang.id2slot[i] for i in gt_ids]
-                words    = [lang.id2word[i] for i in utt_ids]
-                pr_ids   = output_slots[idx, :L].tolist()
-                pr_tags  = [lang.id2slot[i] for i in pr_ids]
+                ref_seq, hyp_seq = [], []
+                for tok, gid, pid in zip(toks, gold_ids, pred_ids):
+                    # look up strings
+                    gold_tag = lang.id2slot.get(gid, None)
+                    pred_tag = lang.id2slot.get(pid, None)
 
-                # build seq of (word, tag)
-                ref_slots.append(list(zip(words, gt_tags)))
-                hyp_slots.append(list(zip(words, pr_tags)))
+                    # if something’s wrong, print it
+                    if gold_tag is None or pred_tag is None or gold_tag == "pad":
+                        print("  ⚠️ skipping bad tag:", tok, gid, gold_tag, pid, pred_tag)
+                        continue
 
-    # compute metrics exactly as in notebook
-    slot_res = evaluate(ref_slots, hyp_slots)
-    intent_rep = classification_report(
-        ref_intents, hyp_intents,
-        zero_division=False, output_dict=True
-    )
-    return slot_res, intent_rep, loss_array
+                    ref_seq.append((tok, gold_tag))
+                    hyp_seq.append((tok, pred_tag))
+
+                if ref_seq and hyp_seq:
+                    all_ref.append(ref_seq)
+                    all_hyp.append(hyp_seq)
+
+    slot_res   = evaluate(all_ref, all_hyp)
+    intent_rep = classification_report(ref_ints, hyp_ints,
+                                       zero_division=False,
+                                       output_dict=True)
+    return slot_res, intent_rep
