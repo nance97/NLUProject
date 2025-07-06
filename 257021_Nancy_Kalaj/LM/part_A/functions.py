@@ -3,17 +3,16 @@ import copy
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from model import LM_LSTM, RNN_cell
+from model import LM_LSTM, LM_RNN
 
 
 def build_model(cfg, vocab_size, pad_idx):
-    if cfg["model_type"] == "RNN_cell":
-        return RNN_cell(
+    if cfg["model_type"] == "LM_RNN":
+        return LM_RNN(
             hidden_size=cfg["hid_size"],
-            input_size=cfg["emb_size"],
+            emb_size=cfg["emb_size"],
             output_size=vocab_size,
-            vocab_size=vocab_size,
-            dropout=cfg.get("dropout", 0.0)
+            pad_index = pad_idx
         )
     elif cfg["model_type"] == "LM_LSTM":
         return LM_LSTM(
