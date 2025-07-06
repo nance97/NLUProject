@@ -1,8 +1,7 @@
 import math
 import torch
 import torch.nn as nn
-import torch.optim as optim
-from model import LM_LSTM
+from model import LM_LSTM, LockedDropout
 
 
 def build_model(cfg, vocab_size, pad_idx):
@@ -21,6 +20,11 @@ def build_model(cfg, vocab_size, pad_idx):
             "For weight tying, emb_size must equal hidden_size"
         # tie embedding <-> output projection
         model.output_layer.weight = model.embedding.weight
+
+    if cfg.get("use_variational_dropout", False):
+        # replace the nn.Dropout modules with LockedDropout
+        model.emb_dropout = LockedDropout(cfg["embed_dropout"])
+        model.fc_dropout = LockedDropout(cfg["dropout"])
 
     return model
 

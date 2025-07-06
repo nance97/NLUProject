@@ -4,10 +4,11 @@ CFG = {
     "emb_size":      300,
     "hid_size":      300,
     "dropout":       0.5,     # LockedDropout
-    "embed_dropout": 0.5,
+    "embed_dropout": 0.5,     # LockedDropout
     "optimizer":     "AdamW",
     "lr":            1e-3,
     "weight_decay":  0.05,
+    "use_var_drop":  True,
     "use_avsgd":     False,
     "asgd_lr":       None,
     "weight_tying":  True,

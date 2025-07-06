@@ -8,6 +8,7 @@ CFG = {
     "optimizer":     "AdamW",    # start with AdamW
     "lr":            1e-3,
     "weight_decay":  0.05,
+    "use_var_drop":  True,
     "use_avsgd":     True,
     "asgd_lr":       1e-3,       # ASGD kick‐in lr
     "weight_tying":  True,

@@ -39,9 +39,7 @@ if __name__ == "__main__":
     init_weights(model)
 
     # 5) Optimizer
-    if cfg["optimizer"] == "SGD":
-        optimizer = optim.SGD(model.parameters(), lr=cfg["lr"])
-    elif cfg["optimizer"] == "AdamW":
+    if cfg["optimizer"] == "AdamW":
         optimizer = optim.AdamW(model.parameters(), lr=cfg["lr"], weight_decay=cfg.get("weight_decay", 0.0))
     else:
         raise ValueError(cfg["optimizer"])
@@ -50,14 +48,14 @@ if __name__ == "__main__":
     criterion_dev   = nn.CrossEntropyLoss(ignore_index=pad_idx)
 
     # 6) Training loop with patience/early stopping
-    n_epochs = cfg.get("n_epochs", 100)
-    patience = cfg.get("patience", 3)
+    n_epochs = 100
+    patience = 3
     best_ppl = float('inf')
     best_model = None
     epochs_no_improve = 0
 
     for epoch in range(1, n_epochs+1):
-        train_loss = train_loop(loader_train, model, optimizer, criterion_train, clip=cfg.get("clip", 5.0))
+        train_loss = train_loop(loader_train, model, optimizer, criterion_train, clip=5)
         dev_ppl = eval_loop(loader_dev, model, criterion_dev)
         print(f"Epoch {epoch}: dev PPL = {dev_ppl:.2f}")
 

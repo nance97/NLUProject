@@ -28,15 +28,15 @@ class LM_LSTM(nn.Module):
     ):
         super().__init__()
         # embeddings → LSTM → projection
-        self.embedding    = nn.Embedding(output_size, emb_size, padding_idx=pad_index)
-        self.emb_dropout  = nn.Dropout(emb_dropout)
-        self.lstm         = nn.LSTM(
+        self.embedding  = nn.Embedding(output_size, emb_size, padding_idx=pad_index)
+        self.emb_dropout: nn.Module = nn.Dropout(emb_dropout)
+        self.lstm = nn.LSTM(
             input_size=emb_size,
             hidden_size=hidden_size,
             num_layers=n_layers,
             batch_first=True
         )
-        self.fc_dropout   = nn.Dropout(fc_dropout)
+        self.fc_dropout: nn.Module = nn.Dropout(fc_dropout)
         self.output_layer = nn.Linear(hidden_size, output_size)
 
     def forward(self, x):
