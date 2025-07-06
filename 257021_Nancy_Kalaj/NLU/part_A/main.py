@@ -1,7 +1,7 @@
 # main.py
 import argparse, sys, os, copy, numpy as np, torch, torch.nn as nn, torch.optim as optim
 from utils import ensure_atis, prepare_splits, Lang, make_loader, DEVICE, PAD_TOKEN
-from functions import build_model, init_weights, train_epoch, eval_model
+from functions import build_model, init_weights, train_epoch, eval_loop
 
 if __name__=="__main__":
     p = argparse.ArgumentParser()
@@ -33,7 +33,7 @@ if __name__=="__main__":
     if args.test:
         model = build_model(cfg, lang).to(DEVICE)
         model.load_state_dict(torch.load(ckpt_path, map_location=DEVICE))
-        slot_res, intent_res = eval_model(loaders["test"], model, slot_cr, intent_cr, lang)
+        slot_res, intent_rep, _ = eval_loop(loaders["test"], slot_cr, intent_cr, model, lang)
         print(f"TEST {args.exp}: Slot F1={slot_res['total']['f']:.4f}, Intent Acc={intent_res['accuracy']:.4f}") # type: ignore
         exit(0)
 
@@ -51,7 +51,7 @@ if __name__=="__main__":
         epochs_no_improve = 0
         for epoch in range(1, 200):
             train_epoch(loaders["train"], model, optimizer, slot_cr, intent_cr, clip=5)
-            slot_dev, _ = eval_model(loaders["dev"], model, slot_cr, intent_cr, lang)
+            slot_dev, intent_rep, _ = eval_loop(loaders["dev"], slot_cr, intent_cr, model, lang)
             dev_f1 = slot_dev["total"]["f"]
 
             if dev_f1 > best_dev_f1:
@@ -64,7 +64,7 @@ if __name__=="__main__":
                 break
 
         # evaluate this run’s best on test
-        slot_test, intent_test = eval_model(loaders["test"], best_model, slot_cr, intent_cr, lang)
+        slot_test, intent_test, _ = eval_loop(loaders["test"], slot_cr, intent_cr, best_model, lang)
         slot_f1s.append(slot_test["total"]["f"])
         if not isinstance(intent_test, dict):
             raise RuntimeError(f"Expected dict from eval_model, got {type(intent_test)}")

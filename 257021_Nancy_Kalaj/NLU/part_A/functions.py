@@ -46,47 +46,51 @@ def train_epoch(loader, model, opt, slot_cr, intent_cr, clip):
         losses.append((l_slot + l_intent).item())
     return sum(losses) / len(losses)
 
-def eval_model(loader, model, slot_cr, intent_cr, lang):
-    from conll import evaluate  # make sure conll.py is on your PYTHONPATH
+def eval_loop(loader, criterion_slots, criterion_intents, model, lang):
+    from conll import evaluate
 
     model.eval()
-    all_ref_slots, all_hyp_slots = [], []
-    ref_ints, hyp_ints          = [], []
+    loss_array   = []
+    ref_intents  = []
+    hyp_intents  = []
+    ref_slots    = []
+    hyp_slots    = []
+
     with torch.no_grad():
-        for b in loader:
-            # forward
-            s_logits, i_logits = model(b["utterances"], b["slots_len"])
+        for sample in loader:
+            # forward pass
+            slots, intents = model(sample["utterances"], sample["slots_len"])
+            # losses (if you need them)
+            loss_slot   = criterion_slots(slots,  sample["y_slots"])
+            loss_intent = criterion_intents(intents, sample["intents"])
+            loss_array.append((loss_slot + loss_intent).item())
 
-            # --- intent predictions ---
-            preds_int = i_logits.argmax(-1).tolist()
-            ref_ints += [lang.id2intent[i] for i in b["intents"].tolist()]
-            hyp_ints += [lang.id2intent[p] for p in preds_int]
+            # intent inference
+            out_ints = torch.argmax(intents, dim=1).tolist()
+            gt_ints  = sample["intents"].tolist()
+            ref_intents.extend([lang.id2intent[i] for i in gt_ints])
+            hyp_intents.extend([lang.id2intent[i] for i in out_ints])
 
-            # --- slot predictions ---
-            # s_logits: (B, C_slot, T) → argmax → (B, T)
-            sl = s_logits.argmax(1)
-            for i in range(len(b["slots_len"])):
-                L      = b["slots_len"][i].item()
-                tokens = [lang.id2word[idx] for idx in b["utterances"][i, :L].tolist()]
-                gold   = [lang.id2slot[idx] for idx in b["y_slots"][i, :L].tolist()]
-                pred   = [lang.id2slot[idx] for idx in sl[i, :L].tolist()]
+            # slot inference
+            output_slots = torch.argmax(slots, dim=1)  # (B, T)
+            for idx in range(len(sample["slots_len"])):
+                L        = sample["slots_len"][idx].item()
+                utt_ids  = sample["utterances"][idx, :L].tolist()
+                gt_ids   = sample["y_slots"][idx, :L].tolist()
+                # map IDs back to tags/words
+                gt_tags  = [lang.id2slot[i] for i in gt_ids]
+                words    = [lang.id2word[i] for i in utt_ids]
+                pr_ids   = output_slots[idx, :L].tolist()
+                pr_tags  = [lang.id2slot[i] for i in pr_ids]
 
-                ref_seq, hyp_seq = [], []
-                for tok, g, p in zip(tokens, gold, pred):
-                    # Skip any padding or None tags
-                    if g is None or p is None or g == "pad":
-                        continue
-                    ref_seq.append((tok, g))
-                    hyp_seq.append((tok, p))
+                # build seq of (word, tag)
+                ref_slots.append(list(zip(words, gt_tags)))
+                hyp_slots.append(list(zip(words, pr_tags)))
 
-                # Only append if there is at least one real tag
-                if ref_seq and hyp_seq:
-                    all_ref_slots.append(ref_seq)
-                    all_hyp_slots.append(hyp_seq)
-
-    # Now there should be no None left in your tags
-    slot_res   = evaluate(all_ref_slots, all_hyp_slots)
-    intent_rep = classification_report(ref_ints, hyp_ints,
-                                       zero_division=False,
-                                       output_dict=True)
-    return slot_res, intent_rep
+    # compute metrics exactly as in notebook
+    slot_res = evaluate(ref_slots, hyp_slots)
+    intent_rep = classification_report(
+        ref_intents, hyp_intents,
+        zero_division=False, output_dict=True
+    )
+    return slot_res, intent_rep, loss_array
