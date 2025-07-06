@@ -6,7 +6,7 @@ from utils import (
 )
 from functions import (
     init_weights,
-    train_loop, eval_loop,
+    train_loop, eval_loop, build_model
 )
 import torch.nn as nn
 import torch.optim as optim
@@ -40,16 +40,7 @@ if __name__ == "__main__":
     loader_test  = make_loader(ptb_test,  batch_size=128, pad_token=pad_idx)
 
     # 4) Model + loss
-    ModelClass = cfg["model_type"]
-    model = ModelClass(
-        emb_size=cfg["emb_size"],
-        hidden_size=cfg["hidden_size"],
-        output_size=len(lang.word2id),
-        pad_index=pad_idx,
-        n_layers=1,
-        dropout=cfg.get("dropout", 0.0),
-        embed_dropout=cfg.get("embed_dropout", 0.0),
-    )
+    model = build_model(cfg, len(lang.word2id), pad_idx)
     model.to(DEVICE)
     init_weights(model)
 
@@ -65,7 +56,7 @@ if __name__ == "__main__":
         raise ValueError(cfg["optimizer"])
 
     criterion_train = nn.CrossEntropyLoss(ignore_index=pad_idx)
-    criterion_dev   = nn.CrossEntropyLoss(ignore_index=pad_idx)
+    criterion_dev = nn.CrossEntropyLoss(ignore_index=pad_idx)
 
     # 6) Final training with best lr + AdamW
     n_epochs  = 20
