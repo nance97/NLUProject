@@ -40,7 +40,7 @@ if __name__ == "__main__":
     loader_test  = make_loader(ptb_test,  batch_size=128, pad_token=pad_idx)
 
     # 4) Model + loss
-    ModelClass = cfg["model_cls"]
+    ModelClass = cfg["model_type"]
     model = ModelClass(
         emb_size=cfg["emb_size"],
         hidden_size=cfg["hidden_size"],
