@@ -45,11 +45,9 @@ if __name__ == "__main__":
     init_weights(model)
 
     if cfg["optimizer"] == "SGD":
-        optimizer = optim.SGD(model.parameters(), lr=cfg["lr"],
-                            weight_decay=cfg["weight_decay"])
+        optimizer = optim.SGD(model.parameters(), lr=cfg["lr"])
     elif cfg["optimizer"] == "AdamW":
-        optimizer = optim.AdamW(model.parameters(), lr=cfg["lr"],
-                                weight_decay=cfg["weight_decay"])
+        optimizer = optim.AdamW(model.parameters(), lr=cfg["lr"], weight_decay=cfg["weight_decay"])
     elif cfg["optimizer"] == "ASGD":
         optimizer = optim.ASGD(model.parameters(), lr=cfg["lr"])
     else:
