@@ -20,8 +20,7 @@ class ModelIAS(nn.Module):
 
     def forward(self, wids, lengths):
         emb = self.dropout(self.embedding(wids))
-        packed = pack_padded_sequence(emb, lengths.cpu(), batch_first=True,
-                                      enforce_sorted=True)
+        packed = pack_padded_sequence(emb, lengths.cpu(), batch_first=True)
         packed_out, (h_n, _) = self.encoder(packed)
         seq_out, _ = pad_packed_sequence(packed_out, batch_first=True)
         seq_out = self.dropout(seq_out)

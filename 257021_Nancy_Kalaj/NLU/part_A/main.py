@@ -26,10 +26,10 @@ if __name__=="__main__":
     }
 
     ckpt_path = f"bin/{args.exp}_best.pt"
-    slot_cr   = nn.CrossEntropyLoss(ignore_index=PAD_TOKEN)
+    slot_cr = nn.CrossEntropyLoss(ignore_index=PAD_TOKEN)
     intent_cr = nn.CrossEntropyLoss()
 
-    # test-only?
+    # test?
     if args.test:
         model = build_model(cfg, lang).to(DEVICE)
         model.load_state_dict(torch.load(ckpt_path, map_location=DEVICE))
@@ -56,7 +56,7 @@ if __name__=="__main__":
 
             if dev_f1 > best_dev_f1:
                 best_dev_f1 = dev_f1
-                best_model  = copy.deepcopy(model)
+                best_model = copy.deepcopy(model)
                 epochs_no_improve = 0
             else:
                 epochs_no_improve += 1

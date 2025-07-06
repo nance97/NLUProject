@@ -44,7 +44,7 @@ def train_epoch(loader, model, opt, slot_cr, intent_cr, clip):
     for b in loader:
         opt.zero_grad()
         s_logits, i_logits = model(b["wids"], b["lengths"])
-        l_slot   = slot_cr(s_logits, b["sids"])
+        l_slot = slot_cr(s_logits, b["sids"])
         l_intent = intent_cr(i_logits, b["iid"].squeeze())
         (l_slot + l_intent).backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), clip)
@@ -54,7 +54,7 @@ def train_epoch(loader, model, opt, slot_cr, intent_cr, clip):
 
 def eval_model(loader, model, slot_cr, intent_cr, lang):
     # <-- DELAY the import until runtime, after conll.py has been downloaded
-    from conll import evaluate
+    from conll import evaluate # type: ignore
 
     model.eval()
     all_ref_slots, all_hyp_slots = [], []
