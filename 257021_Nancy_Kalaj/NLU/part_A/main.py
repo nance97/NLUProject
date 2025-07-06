@@ -60,7 +60,7 @@ if __name__=="__main__":
                 epochs_no_improve = 0
             else:
                 epochs_no_improve += 1
-            if epochs_no_improve >= cfg["patience"]:
+            if epochs_no_improve >= 3:
                 break
 
         # evaluate this run’s best on test
