@@ -1,7 +1,6 @@
 # main.py
 import argparse, os, copy, numpy as np, torch, torch.nn as nn, torch.optim as optim
-from utils     import prepare_splits, Lang, make_loader, DEVICE, PAD_TOKEN
-from model     import ModelIAS
+from utils     import ensure_atis, prepare_splits, Lang, make_loader, DEVICE, PAD_TOKEN
 from functions import build_model, init_weights, train_epoch, eval_model
 
 if __name__=="__main__":
@@ -14,6 +13,8 @@ if __name__=="__main__":
     cfg_mod = __import__(f"configs.{args.exp}", fromlist=["CFG"])
     cfg     = cfg_mod.CFG
 
+    # make sure ATIS JSONs + conll.py are downloaded
+    ensure_atis()
     # data + loaders
     tr, dv, te = prepare_splits("dataset/ATIS/train.json","dataset/ATIS/test.json")
     lang = Lang(tr, dv, te)

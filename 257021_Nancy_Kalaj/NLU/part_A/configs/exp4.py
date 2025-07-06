@@ -7,5 +7,4 @@ CFG = {
     "optimizer":    "AdamW",
     "lr":           1e-3,
     "weight_decay": 1e-2,
-    "n_runs":       5,
 }

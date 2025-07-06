@@ -1,4 +1,4 @@
-import copy, torch, torch.nn as nn, math
+import torch, torch.nn as nn, math
 from sklearn.metrics import classification_report
 from utils import DEVICE, PAD_TOKEN
 from model import ModelIAS
