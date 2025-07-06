@@ -17,14 +17,10 @@ def build_model(cfg, lang):
 
 def init_weights(model: nn.Module):
     """
-    Initialize model weights for reproducibility and stable training.
-
-    Applies Xavier/orthogonal initialization for RNN/LSTM layers
-    and uniform for Linear layers.
+    Initialize RNN/LSTM with Xavier/orthogonal and Linear uniformly.
     """
     for module in model.modules():
-        # RNN/LSTM weight initialization
-        if isinstance(module, (nn.LSTM,)):
+        if isinstance(module, nn.LSTM):
             for name, param in module.named_parameters():
                 if 'weight_ih' in name:
                     nn.init.xavier_uniform_(param.data)
@@ -32,7 +28,6 @@ def init_weights(model: nn.Module):
                     nn.init.orthogonal_(param.data)
                 elif 'bias' in name:
                     param.data.zero_()
-        # Linear projection initialization
         elif isinstance(module, nn.Linear):
             nn.init.uniform_(module.weight, -0.01, 0.01)
             if module.bias is not None:
@@ -40,41 +35,45 @@ def init_weights(model: nn.Module):
 
 def train_epoch(loader, model, opt, slot_cr, intent_cr, clip):
     model.train()
-    losses=[]
+    losses = []
     for b in loader:
         opt.zero_grad()
-        s_logits, i_logits = model(b["wids"], b["lengths"])
-        l_slot = slot_cr(s_logits, b["sids"])
-        l_intent = intent_cr(i_logits, b["iid"].squeeze())
+        s_logits, i_logits = model(b["utterances"], b["slots_len"])
+        l_slot   = slot_cr(s_logits, b["y_slots"])
+        l_intent = intent_cr(i_logits,  b["intents"])
         (l_slot + l_intent).backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), clip)
         opt.step()
-        losses.append((l_slot+l_intent).item())
-    return sum(losses)/len(losses)
+        losses.append((l_slot + l_intent).item())
+    return sum(losses) / len(losses)
 
 def eval_model(loader, model, slot_cr, intent_cr, lang):
-    # <-- DELAY the import until runtime, after conll.py has been downloaded
-    from conll import evaluate # type: ignore
+    # delay import until after ensure_atis()
+    from conll import evaluate  # type: ignore
 
     model.eval()
     all_ref_slots, all_hyp_slots = [], []
     ref_ints, hyp_ints = [], []
     with torch.no_grad():
         for b in loader:
-            s_logits, i_logits = model(b["wids"], b["lengths"])
+            s_logits, i_logits = model(b["utterances"], b["slots_len"])
             # intent
             preds_int = i_logits.argmax(-1).tolist()
-            ref_ints += [lang.id2intent[i] for i in b["iid"].tolist()]
+            ref_ints += [lang.id2intent[i] for i in b["intents"].tolist()]
             hyp_ints += [lang.id2intent[p] for p in preds_int]
-            # slots: permute back, argmax, map to tokens
-            sl = s_logits.argmax(1)        # (B, T)
-            for i in range(len(b["lengths"])):
-                L = b["lengths"][i]
-                tokens = [lang.id2word[id] for id in b["wids"][i,:L].tolist()]
-                gold_tags = [lang.id2slot[id] for id in b["sids"][i,:L].tolist()]
-                hyp_tags  = [lang.id2slot[id] for id in sl[i,:L].tolist()]
-                all_ref_slots.append(list(zip(tokens,gold_tags)))
-                all_hyp_slots.append(list(zip(tokens,hyp_tags)))
+
+            # slots
+            sl = s_logits.argmax(1)  # (B, T)
+            for i in range(len(b["slots_len"])):
+                L      = b["slots_len"][i].item()
+                tokens = [lang.id2word[idx] for idx in b["utterances"][i,:L].tolist()]
+                gold   = [lang.id2slot[idx] for idx in b["y_slots"][i,:L].tolist()]
+                pred   = [lang.id2slot[idx] for idx in sl[i,:L].tolist()]
+                all_ref_slots.append(list(zip(tokens, gold)))
+                all_hyp_slots.append(list(zip(tokens, pred)))
+
     slot_res   = evaluate(all_ref_slots, all_hyp_slots)
-    intent_rep = classification_report(ref_ints, hyp_ints, zero_division=False, output_dict=True)
+    intent_rep = classification_report(ref_ints, hyp_ints,
+                                       zero_division=False,
+                                       output_dict=True)
     return slot_res, intent_rep
