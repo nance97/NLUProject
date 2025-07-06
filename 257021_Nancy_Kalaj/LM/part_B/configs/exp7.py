@@ -8,8 +8,8 @@ CFG = {
     "optimizer":     "AdamW",
     "lr":            1e-3,
     "weight_decay":  0.05,
+    "weight_tying":  True,
     "use_var_drop":  True,
     "use_avsgd":     False,
     "asgd_lr":       None,
-    "weight_tying":  True,
 }

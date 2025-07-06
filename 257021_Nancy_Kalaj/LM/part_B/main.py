@@ -53,6 +53,7 @@ if __name__ == "__main__":
     best_ppl = float('inf')
     best_model = None
     epochs_no_improve = 0
+    using_asgd = False
 
     for epoch in range(1, n_epochs+1):
         train_loss = train_loop(loader_train, model, optimizer, criterion_train, clip=5)
@@ -67,8 +68,14 @@ if __name__ == "__main__":
             epochs_no_improve += 1
 
         if epochs_no_improve >= patience:
-            print(f"No improvement for {patience} epochs. Early stopping.")
-            break
+            if cfg.get("use_avsgd", False) and not using_asgd:
+                print(f"No improvement for {patience} epochs. Switching to ASGD (lr={cfg['asgd_lr']})…")
+                optimizer = optim.ASGD(model.parameters(), lr=cfg["asgd_lr"])
+                using_asgd = True
+                epochs_no_improve = 0
+            else:
+                print(f"No improvement for {patience} epochs. Stopping training.")
+                break
 
     # 7) Test
     if best_model is not None:
