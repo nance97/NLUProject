@@ -18,12 +18,13 @@ ATIS_URLS = {
 }
 
 def ensure_atis(atis_dir="dataset/ATIS"):
+    """
+    Download ATIS JSON files and the conll.py evaluation script
+    if they aren’t already present.
+    """
     os.makedirs(atis_dir, exist_ok=True)
     for fname, url in ATIS_URLS.items():
-        if fname == "conll.py":
-            dest = os.path.join(os.getcwd(), fname)  # <- project root
-        else:
-            dest = os.path.join(atis_dir, fname)
+        dest = os.path.join(atis_dir, fname)
         if not os.path.exists(dest):
             print(f"Downloading {fname} …")
             urllib.request.urlretrieve(url, dest)

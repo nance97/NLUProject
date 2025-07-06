@@ -2,7 +2,6 @@ import torch, torch.nn as nn, math
 from sklearn.metrics import classification_report
 from utils import DEVICE, PAD_TOKEN
 from model import ModelIAS
-from conll import evaluate
 
 def build_model(cfg, lang):
     return ModelIAS(
@@ -54,6 +53,9 @@ def train_epoch(loader, model, opt, slot_cr, intent_cr, clip):
     return sum(losses)/len(losses)
 
 def eval_model(loader, model, slot_cr, intent_cr, lang):
+    # <-- DELAY the import until runtime, after conll.py has been downloaded
+    from conll import evaluate
+
     model.eval()
     all_ref_slots, all_hyp_slots = [], []
     ref_ints, hyp_ints = [], []
