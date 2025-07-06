@@ -3,6 +3,30 @@ import copy
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from LM.part_A.model import LM_LSTM, RNN_cell
+
+
+def build_model(cfg, vocab_size, pad_idx):
+    if cfg["model_type"] == "RNN_cell":
+        return RNN_cell(
+            hidden_size=cfg["hid_size"],
+            input_size=cfg["emb_size"],
+            output_size=vocab_size,
+            vocab_size=vocab_size,
+            dropout=cfg.get("dropout", 0.0)
+        )
+    elif cfg["model_type"] == "LM_LSTM":
+        return LM_LSTM(
+            emb_size=cfg["emb_size"],
+            hidden_size=cfg["hid_size"],
+            output_size=vocab_size,
+            pad_index=pad_idx,
+            n_layers=cfg.get("n_layers", 1),
+            fc_dropout=cfg.get("dropout", 0.0),
+            emb_dropout=cfg.get("embed_dropout", 0.0)
+        )
+    else:
+        raise ValueError(f"Unknown model type: {cfg['model_type']}")
 
 def init_weights(model: nn.Module):
     for m in model.modules():

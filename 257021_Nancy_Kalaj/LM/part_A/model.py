@@ -20,7 +20,7 @@ class LM_LSTM(nn.Module):
         self,
         emb_size: int,
         hidden_size: int,
-        vocab_size: int,
+        output_size: int,
         pad_index: int = 0,
         n_layers: int = 1,
         emb_dropout: float = 0.1,
@@ -28,7 +28,7 @@ class LM_LSTM(nn.Module):
     ):
         super().__init__()
         # embeddings → LSTM → projection
-        self.embedding    = nn.Embedding(vocab_size, emb_size, padding_idx=pad_index)
+        self.embedding    = nn.Embedding(output_size, emb_size, padding_idx=pad_index)
         self.emb_dropout  = nn.Dropout(emb_dropout)
         self.lstm         = nn.LSTM(
             input_size=emb_size,
@@ -37,7 +37,7 @@ class LM_LSTM(nn.Module):
             batch_first=True
         )
         self.fc_dropout   = nn.Dropout(fc_dropout)
-        self.output_layer = nn.Linear(hidden_size, vocab_size)
+        self.output_layer = nn.Linear(hidden_size, output_size)
 
     def forward(self, x):
         # x: (B, T)
