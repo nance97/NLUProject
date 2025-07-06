@@ -70,20 +70,3 @@ def eval_loop(loader, model, criterion):
             total_tokens += batch["n_tokens"]
     ppl = math.exp(total_loss / total_tokens)
     return ppl
-
-def find_best_lr(
-    lrs: list,
-    loader_train, loader_dev,
-    model, criterion_train, criterion_dev,
-    init_fn, clip=5.0
-):
-    best = {}
-    for lr in lrs:
-        init_fn(model)  # re‐init weights
-        optimizer = optim.AdamW(model.parameters(), lr=lr)
-        # single epoch for speed
-        train_loop(loader_train, model, optimizer, criterion_train, clip)
-        ppl = eval_loop(loader_dev, model, criterion_dev)
-        best[lr] = ppl
-    # return lr with minimal dev-PPL
-    return min(best.items(), key=lambda x: x[1])
