@@ -48,7 +48,7 @@ def train_epoch(loader, model, opt, slot_cr, intent_cr, clip):
     return sum(losses) / len(losses)
 
 def eval_model(loader, model, slot_cr, intent_cr, lang):
-    # delay import until after ensure_atis()
+    # delay import so conll.py has been downloaded
     from conll import evaluate  # type: ignore
 
     model.eval()
@@ -57,20 +57,32 @@ def eval_model(loader, model, slot_cr, intent_cr, lang):
     with torch.no_grad():
         for b in loader:
             s_logits, i_logits = model(b["utterances"], b["slots_len"])
-            # intent
-            preds_int = i_logits.argmax(-1).tolist()
-            ref_ints += [lang.id2intent[i] for i in b["intents"].tolist()]
-            hyp_ints += [lang.id2intent[p] for p in preds_int]
 
-            # slots
+            # Intent preds
+            preds_int = i_logits.argmax(-1).tolist()
+            ref_ints += [lang.id2intent[i.item()] for i in b["intents"]]
+            hyp_ints += [lang.id2intent[p]         for p in preds_int]
+
+            # Slot preds
             sl = s_logits.argmax(1)  # (B, T)
             for i in range(len(b["slots_len"])):
                 L      = b["slots_len"][i].item()
                 tokens = [lang.id2word[idx] for idx in b["utterances"][i,:L].tolist()]
-                gold   = [lang.id2slot[idx] for idx in b["y_slots"][i,:L].tolist()]
-                pred   = [lang.id2slot[idx] for idx in sl[i,:L].tolist()]
-                all_ref_slots.append(list(zip(tokens, gold)))
-                all_hyp_slots.append(list(zip(tokens, pred)))
+                gold_ids= b["y_slots"][i,:L].tolist()
+                pred_ids= sl[i,:L].tolist()
+
+                ref_seq, hyp_seq = [], []
+                for tok, gid, pid in zip(tokens, gold_ids, pred_ids):
+                    gold_tag = lang.id2slot[gid]
+                    pred_tag = lang.id2slot[pid]
+                    # skip padding or None tags
+                    if gold_tag == "pad" or gold_tag is None:
+                        continue
+                    ref_seq.append((tok, gold_tag))
+                    hyp_seq.append((tok, pred_tag))
+
+                all_ref_slots.append(ref_seq)
+                all_hyp_slots.append(hyp_seq)
 
     slot_res   = evaluate(all_ref_slots, all_hyp_slots)
     intent_rep = classification_report(ref_ints, hyp_ints,
