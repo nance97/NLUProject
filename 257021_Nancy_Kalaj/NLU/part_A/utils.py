@@ -98,37 +98,45 @@ class ATISDataset(Dataset):
             "iid": torch.LongTensor([iid])
         }
 
-def collate_fn(data):
-    # data: list of examples from your ATISJointDataset, each with 
-    #   .utt_ids, .slot_ids, .intent_ids, .lengths
+def collate_fn(batch):
+    """
+    batch: list of samples, each is a dict {
+      'utterance': LongTensor([w1,w2,...]),
+      'slots':     LongTensor([s1,s2,...]),
+      'intent':    int
+    }
+    We need to produce:
+      - wids:    LongTensor of shape (B, T)
+      - sids:    LongTensor of shape (B, T)
+      - iid:     LongTensor of shape (B,)
+      - lengths: LongTensor of shape (B,)
+    """
+    # 1) sort by utterance length (descending)
+    batch.sort(key=lambda ex: ex["utterance"].size(0), reverse=True)
 
-    # 1) sort by length descending
-    data.sort(key=lambda x: len(x.utt_ids), reverse=True)
+    # 2) unpack into lists
+    wids_list   = [ex["utterance"].tolist() for ex in batch]
+    sids_list   = [ex["slots"].tolist()    for ex in batch]
+    iid_list    = [ex["intent"]             for ex in batch]
+    lengths     = [len(x)                   for x in wids_list]
+    maxlen      = max(lengths)
 
-    # 2) extract lists
-    wids_list    = [ex.utt_ids    for ex in data]
-    sids_list    = [ex.slot_ids   for ex in data]
-    intent_list  = [ex.intent_ids for ex in data]
-    lengths      = [len(x) for x in wids_list]
-    maxlen       = max(lengths)
+    # 3) pad wids and sids to maxlen
+    wids = torch.full((len(wids_list), maxlen), PAD_TOKEN, dtype=torch.long)
+    sids = torch.full((len(sids_list), maxlen), PAD_TOKEN, dtype=torch.long)
+    for i, seq in enumerate(wids_list):
+        wids[i, :lengths[i]] = torch.tensor(seq, dtype=torch.long)
+    for i, seq in enumerate(sids_list):
+        sids[i, :lengths[i]] = torch.tensor(seq, dtype=torch.long)
 
-    # 3) pad wids and sids
-    def pad(seqs, pad_value=PAD_TOKEN):
-        tensor = torch.full((len(seqs), maxlen), pad_value, dtype=torch.long)
-        for i, seq in enumerate(seqs):
-            tensor[i, :len(seq)] = torch.LongTensor(seq)
-        return tensor.to(DEVICE)
-
-    wids    = pad(wids_list)
-    sids    = pad(sids_list)
-    iid     = torch.LongTensor(intent_list).to(DEVICE)
-    lengths = torch.LongTensor(lengths)
+    # 4) intent IDs
+    iid = torch.tensor(iid_list, dtype=torch.long)
 
     return {
-        "wids":    wids,      # (B, T)
-        "sids":    sids,      # (B, T)
-        "iid":     iid,       # (B,)
-        "lengths": lengths    # (B,)
+        "wids":    wids.to(DEVICE),                       # (B, T)
+        "sids":    sids.to(DEVICE),                       # (B, T)
+        "iid":     iid.to(DEVICE),                        # (B,)
+        "lengths": torch.tensor(lengths, dtype=torch.long)# (B,)
     }
 
 def make_loader(exs, lang, bs, shuffle):
