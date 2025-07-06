@@ -8,7 +8,4 @@ CFG = {
     "optimizer":     "SGD",
     "lr":            2.0,
     "weight_decay":  0.0,
-    "use_avsgd":     False,
-    "asgd_lr":       None,
-    "weight_tying":  False,
 }
