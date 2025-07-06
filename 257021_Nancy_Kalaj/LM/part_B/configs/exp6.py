@@ -1,10 +1,10 @@
-# exp6: variational (locked) dropout p=0.5 + weight tying
+# exp5: weight tying (hid_size==emb_size), tune wd=0.05
 CFG = {
     "model_type":    "LM_LSTM",
     "emb_size":      300,
     "hid_size":      300,
-    "dropout":       0.5,     # LockedDropout
-    "embed_dropout": 0.5,
+    "dropout":       0.1,
+    "embed_dropout": 0.1,
     "optimizer":     "AdamW",
     "lr":            1e-3,
     "weight_decay":  0.05,

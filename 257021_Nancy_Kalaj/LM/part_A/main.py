@@ -1,19 +1,11 @@
-import copy
-import torch
+import argparse, copy, importlib
+from functions import (build_model, init_weights, train_loop, eval_loop)
 import os
-from utils     import (
-    ensure_ptb, read_file, Lang,
-    PennTreebank, make_loader, DEVICE
-)
-from model     import LM_LSTM, LM_RNN  # Import both as needed
-from functions import (
-    build_model,
-    init_weights,
-    train_loop, eval_loop,
-)
+import torch
 import torch.nn as nn
 import torch.optim as optim
-import argparse, importlib
+from utils import (ensure_ptb, read_file, Lang, PennTreebank, make_loader, DEVICE)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -51,8 +43,6 @@ if __name__ == "__main__":
         optimizer = optim.SGD(model.parameters(), lr=cfg["lr"])
     elif cfg["optimizer"] == "AdamW":
         optimizer = optim.AdamW(model.parameters(), lr=cfg["lr"], weight_decay=cfg.get("weight_decay", 0.0))
-    elif cfg["optimizer"] == "ASGD":
-        optimizer = optim.ASGD(model.parameters(), lr=cfg["lr"])
     else:
         raise ValueError(cfg["optimizer"])
 

@@ -7,5 +7,5 @@ CFG = {
     "embed_dropout": 0.1,
     "optimizer":     "AdamW",
     "lr":            1e-3,
-    "weight_decay":  0.05,
+    "weight_decay":  0.01,
 }

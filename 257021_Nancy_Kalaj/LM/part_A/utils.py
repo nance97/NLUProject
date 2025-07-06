@@ -1,6 +1,6 @@
+from functools import partial
 import torch
 from torch.utils.data import Dataset, DataLoader
-from functools import partial
 import os
 import urllib.request
 

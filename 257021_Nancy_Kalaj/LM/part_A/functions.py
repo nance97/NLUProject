@@ -1,8 +1,6 @@
 import math
-import copy
 import torch
 import torch.nn as nn
-import torch.optim as optim
 from model import LM_LSTM, LM_RNN
 
 
