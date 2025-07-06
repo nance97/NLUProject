@@ -28,11 +28,11 @@ if __name__=="__main__":
     intent_cr = nn.CrossEntropyLoss()
 
     # test-only?
-    if args.test_only:
+    if args.test:
         model = build_model(cfg, lang).to(DEVICE)
         model.load_state_dict(torch.load(ckpt_path, map_location=DEVICE))
         slot_res, intent_res = eval_model(loaders["test"], model, slot_cr, intent_cr, lang)
-        print(f"TEST {args.exp}: Slot F1={slot_res['total']['f']:.4f}, Intent Acc={intent_res['accuracy']:.4f}")
+        print(f"TEST {args.exp}: Slot F1={slot_res['total']['f']:.4f}, Intent Acc={intent_res['accuracy']:.4f}") # type: ignore
         exit(0)
 
     # multi-run + early stopping
@@ -64,7 +64,9 @@ if __name__=="__main__":
         # evaluate this run’s best on test
         slot_test, intent_test = eval_model(loaders["test"], best_model, slot_cr, intent_cr, lang)
         slot_f1s.append(slot_test["total"]["f"])
-        intent_accs.append(intent_test['accuracy'])
+        if not isinstance(intent_test, dict):
+            raise RuntimeError(f"Expected dict from eval_model, got {type(intent_test)}")
+        intent_accs.append(intent_test["accuracy"])
 
     # summarize
     print("Slot F1 = %.4f ± %.4f" % (np.mean(slot_f1s), np.std(slot_f1s)))
@@ -72,5 +74,7 @@ if __name__=="__main__":
 
     # save best model
     os.makedirs("bin", exist_ok=True)
+    if best_model is None:
+        raise RuntimeError("No model was ever trained—best_model is still None!")
     torch.save(best_model.state_dict(), ckpt_path)
     print(f"Best model saved to {ckpt_path}")
