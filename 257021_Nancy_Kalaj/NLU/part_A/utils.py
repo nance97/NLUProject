@@ -93,31 +93,47 @@ class ATISDataset(Dataset):
                  for t in ex["slots"].split() ]
         iid  = self.lang.intent2id[ex["intent"]]
         return {
-            "wids":  torch.LongTensor(wids),
-            "sids":  torch.LongTensor(sids),
-            "iid":   torch.LongTensor([iid])
+            "wids": torch.LongTensor(wids),
+            "sids": torch.LongTensor(sids),
+            "iid": torch.LongTensor([iid])
         }
 
-def pad_collate(batch):
-    # pads wids and sids to longest in batch, records lengths
-    wseqs = [b["wids"] for b in batch]
-    sseqs = [b["sids"] for b in batch]
-    lengths = [len(x) for x in wseqs]
-    maxlen = max(lengths)
-    def pad(seqs):
-        out = torch.full((len(seqs), maxlen), PAD_TOKEN, dtype=torch.long)
-        for i,s in enumerate(seqs): out[i,:len(s)] = s
-        return out
+def collate_fn(data):
+    # data: list of examples from your ATISJointDataset, each with 
+    #   .utt_ids, .slot_ids, .intent_ids, .lengths
+
+    # 1) sort by length descending
+    data.sort(key=lambda x: len(x.utt_ids), reverse=True)
+
+    # 2) extract lists
+    wids_list    = [ex.utt_ids    for ex in data]
+    sids_list    = [ex.slot_ids   for ex in data]
+    intent_list  = [ex.intent_ids for ex in data]
+    lengths      = [len(x) for x in wids_list]
+    maxlen       = max(lengths)
+
+    # 3) pad wids and sids
+    def pad(seqs, pad_value=PAD_TOKEN):
+        tensor = torch.full((len(seqs), maxlen), pad_value, dtype=torch.long)
+        for i, seq in enumerate(seqs):
+            tensor[i, :len(seq)] = torch.LongTensor(seq)
+        return tensor.to(DEVICE)
+
+    wids    = pad(wids_list)
+    sids    = pad(sids_list)
+    iid     = torch.LongTensor(intent_list).to(DEVICE)
+    lengths = torch.LongTensor(lengths)
+
     return {
-      "wids": pad(wseqs).to(DEVICE),
-      "sids": pad(sseqs).to(DEVICE),
-      "iid":  torch.cat([b["iid"] for b in batch],0).to(DEVICE),
-      "lengths": torch.LongTensor(lengths).to(DEVICE)
+        "wids":    wids,      # (B, T)
+        "sids":    sids,      # (B, T)
+        "iid":     iid,       # (B,)
+        "lengths": lengths    # (B,)
     }
 
 def make_loader(exs, lang, bs, shuffle):
     ds = ATISDataset(exs, lang)
     return DataLoader(
       ds, batch_size=bs, shuffle=shuffle,
-      collate_fn=pad_collate
+      collate_fn=collate_fn
     )
