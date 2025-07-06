@@ -1,5 +1,5 @@
-import os
-import urllib.request
+# utils.py
+import os, urllib.request
 import json
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -7,10 +7,10 @@ from functools import partial
 from sklearn.model_selection import train_test_split
 from collections import Counter
 
-DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
+DEVICE    = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 PAD_TOKEN = 0
 
-# URLs for ATIS and the CoNLL script
+# URLs to fetch ATIS + conll.py
 ATIS_URLS = {
     "train.json": "https://raw.githubusercontent.com/BrownFortress/IntentSlotDatasets/main/ATIS/train.json",
     "test.json":  "https://raw.githubusercontent.com/BrownFortress/IntentSlotDatasets/main/ATIS/test.json",
@@ -18,13 +18,9 @@ ATIS_URLS = {
 }
 
 def ensure_atis(atis_dir="dataset/ATIS"):
-    """
-    Download ATIS JSON files and the conll.py evaluation script
-    if they aren’t already present.
-    """
     os.makedirs(atis_dir, exist_ok=True)
     for fname, url in ATIS_URLS.items():
-        dest = os.path.join(atis_dir, fname)
+        dest = os.path.join(atis_dir, fname) if fname.endswith('.json') else os.path.join(os.getcwd(), fname)
         if not os.path.exists(dest):
             print(f"Downloading {fname} …")
             urllib.request.urlretrieve(url, dest)
@@ -34,114 +30,106 @@ def load_json(path):
         return json.load(f)
 
 def prepare_splits(train_path, test_path, dev_frac=0.1, seed=42):
-    raw = load_json(train_path)
-    test = load_json(test_path)
-    # stratify on intent
-    intents = [ex["intent"] for ex in raw]
-    freq = Counter(intents)
-    X, singles = [], []
-    y = []
-    for ex in raw:
+    raw_train = load_json(train_path)
+    raw_test  = load_json(test_path)
+
+    # stratify by intent, hold out 10% as dev
+    intents = [ex["intent"] for ex in raw_train]
+    freq    = Counter(intents)
+    X, singles, y = [], [], []
+    for ex in raw_train:
         if freq[ex["intent"]] > 1:
-            X.append(ex)
-            y.append(ex["intent"])
+            X.append(ex); y.append(ex["intent"])
         else:
             singles.append(ex)
-    X_train, X_dev, _, _ = train_test_split(
+
+    X_tr, X_dev, _, _ = train_test_split(
         X, y, test_size=dev_frac, stratify=y,
-        random_state=seed
+        random_state=seed, shuffle=True
     )
-    X_train += singles
-    return X_train, X_dev, test
+    X_tr += singles
+    return X_tr, X_dev, raw_test
 
 class Lang:
-    def __init__(self, train_exs, dev_exs, test_exs, cutoff=0):
-        words = [w for ex in train_exs for w in ex["utterance"].split()]
-        slots = set(tok for ex in train_exs+dev_exs+test_exs
-                         for tok in ex["slots"].split())
-        intents = {ex["intent"] for ex in train_exs+dev_exs+test_exs}
-        self.word2id = self._build(words, pad=True, unk=True, cutoff=cutoff)
-        self.slot2id = self._build(list(slots), pad=True, unk=False)
-        self.intent2id = self._build(list(intents), pad=False, unk=False)
-        self.id2word = {i:w for w,i in self.word2id.items()}
-        self.id2slot = {i:s for s,i in self.slot2id.items()}
-        self.id2intent= {i:c for c,i in self.intent2id.items()}
+    def __init__(self, train_exs, dev_exs, test_exs):
+        # collect all words, slots, intents
+        words = sum((ex["utterance"].split() for ex in train_exs), [])
+        slots = sum((ex["slots"].split()     for ex in train_exs+dev_exs+test_exs), [])
+        intents = [ex["intent"] for ex in train_exs+dev_exs+test_exs]
 
-    def _build(self, items, pad, unk, cutoff=0):
-        idx = 0
-        vocab = {}
-        if pad: vocab["pad"] = idx; idx+=1
-        if unk: vocab["unk"] = idx; idx+=1
-        counts = Counter(items)
-        for w,count in counts.items():
-            if count > cutoff:
-                vocab[w] = idx; idx+=1
-        return vocab
+        self.word2id   = {"pad":PAD_TOKEN, "unk":1}
+        self.slot2id   = {"pad":PAD_TOKEN}
+        self.intent2id = {}
+        idx_w = 2
+        for w in words:
+            if w not in self.word2id:
+                self.word2id[w] = idx_w; idx_w+=1
+
+        idx_s = 1
+        for s in slots:
+            if s not in self.slot2id:
+                self.slot2id[s] = idx_s; idx_s+=1
+
+        idx_i = 0
+        for i in sorted(set(intents)):
+            self.intent2id[i] = idx_i; idx_i+=1
+
+        # reverse maps
+        self.id2word   = {i:w for w,i in self.word2id.items()}
+        self.id2slot   = {i:s for s,i in self.slot2id.items()}
+        self.id2intent = {i:i_ for i_,i in self.intent2id.items()}
 
 class ATISDataset(Dataset):
-    def __init__(self, exs, lang):
-        self.exs = exs
+    def __init__(self, examples, lang):
+        self.exs  = examples
         self.lang = lang
 
-    def __len__(self): return len(self.exs)
-    def __getitem__(self,i):
-        ex = self.exs[i]
-        # map words, slots, intent
-        wids = [ self.lang.word2id.get(w,"unk") 
-                 for w in ex["utterance"].split() ]
-        sids = [ self.lang.slot2id[t] 
-                 for t in ex["slots"].split() ]
+    def __len__(self):
+        return len(self.exs)
+
+    def __getitem__(self, i):
+        ex   = self.exs[i]
+        words = ex["utterance"].split()
+        slots = ex["slots"].split()
+        # map to IDs (with unk fall-back for words)
+        wids = [ self.lang.word2id.get(w, self.lang.word2id["unk"]) 
+                 for w in words ]
+        sids = [ self.lang.slot2id[t] for t in slots ]
         iid  = self.lang.intent2id[ex["intent"]]
         return {
-            "wids": torch.LongTensor(wids),
-            "sids": torch.LongTensor(sids),
-            "iid": torch.LongTensor([iid])
+            "utterance": torch.LongTensor(wids),
+            "slots":     torch.LongTensor(sids),
+            "intent":    iid
         }
 
 def collate_fn(batch):
-    """
-    batch: list of samples, each is a dict {
-      'utterance': LongTensor([w1,w2,...]),
-      'slots':     LongTensor([s1,s2,...]),
-      'intent':    int
-    }
-    We need to produce:
-      - wids:    LongTensor of shape (B, T)
-      - sids:    LongTensor of shape (B, T)
-      - iid:     LongTensor of shape (B,)
-      - lengths: LongTensor of shape (B,)
-    """
-    # 1) sort by utterance length (descending)
+    # sort by utterance length
     batch.sort(key=lambda ex: ex["utterance"].size(0), reverse=True)
 
-    # 2) unpack into lists
-    wids_list   = [ex["utterance"].tolist() for ex in batch]
-    sids_list   = [ex["slots"].tolist()    for ex in batch]
-    iid_list    = [ex["intent"]             for ex in batch]
-    lengths     = [len(x)                   for x in wids_list]
-    maxlen      = max(lengths)
+    utts    = [ex["utterance"] for ex in batch]
+    slots   = [ex["slots"]     for ex in batch]
+    intents = [ex["intent"]     for ex in batch]
+    lengths = [u.size(0)        for u in utts]
+    maxlen  = max(lengths)
 
-    # 3) pad wids and sids to maxlen
-    wids = torch.full((len(wids_list), maxlen), PAD_TOKEN, dtype=torch.long)
-    sids = torch.full((len(sids_list), maxlen), PAD_TOKEN, dtype=torch.long)
-    for i, seq in enumerate(wids_list):
-        wids[i, :lengths[i]] = torch.tensor(seq, dtype=torch.long)
-    for i, seq in enumerate(sids_list):
-        sids[i, :lengths[i]] = torch.tensor(seq, dtype=torch.long)
+    # pad utterances & slots
+    utt_padded  = torch.full((len(batch), maxlen), PAD_TOKEN, dtype=torch.long)
+    slots_padded= torch.full((len(batch), maxlen), PAD_TOKEN, dtype=torch.long)
+    for i, (u, s) in enumerate(zip(utts, slots)):
+        L = lengths[i]
+        utt_padded[i, :L]    = u
+        slots_padded[i, :L]  = s
 
-    # 4) intent IDs
-    iid = torch.tensor(iid_list, dtype=torch.long)
+    intent_tensor = torch.tensor(intents, dtype=torch.long)
 
     return {
-        "wids":    wids.to(DEVICE),                       # (B, T)
-        "sids":    sids.to(DEVICE),                       # (B, T)
-        "iid":     iid.to(DEVICE),                        # (B,)
-        "lengths": torch.tensor(lengths, dtype=torch.long)# (B,)
+        "utterances": utt_padded.to(DEVICE),
+        "y_slots":    slots_padded.to(DEVICE),
+        "intents":    intent_tensor.to(DEVICE),
+        "slots_len":  torch.tensor(lengths, dtype=torch.long).to(DEVICE)
     }
 
-def make_loader(exs, lang, bs, shuffle):
+def make_loader(exs, lang, bs=64, shuffle=False):
     ds = ATISDataset(exs, lang)
-    return DataLoader(
-      ds, batch_size=bs, shuffle=shuffle,
-      collate_fn=collate_fn
-    )
+    return DataLoader(ds, batch_size=bs, shuffle=shuffle, collate_fn=collate_fn)
+                 

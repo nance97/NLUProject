@@ -21,8 +21,8 @@ if __name__=="__main__":
     lang = Lang(tr, dv, te)
     loaders = {
       "train": make_loader(tr, lang, bs=128, shuffle=True),
-      "dev":   make_loader(dv, lang, bs=64,  shuffle=False),
-      "test":  make_loader(te, lang, bs=64,  shuffle=False),
+      "dev":   make_loader(dv, lang, bs=64, shuffle=False),
+      "test":  make_loader(te, lang, bs=64, shuffle=False),
     }
 
     ckpt_path = f"bin/{args.exp}_best.pt"
