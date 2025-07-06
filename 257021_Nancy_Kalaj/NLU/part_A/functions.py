@@ -55,26 +55,33 @@ def eval_model(loader, model, slot_cr, intent_cr, lang):
     with torch.no_grad():
         for b in loader:
             s_logits, i_logits = model(b["utterances"], b["slots_len"])
+
+            # Intent preds
             preds_int = i_logits.argmax(-1).tolist()
             ref_ints += [lang.id2intent[i] for i in b["intents"].tolist()]
             hyp_ints += [lang.id2intent[p] for p in preds_int]
 
-            sl = s_logits.argmax(1)
+            # Slot preds
+            sl = s_logits.argmax(1)  # (B, T)
             for i in range(len(b["slots_len"])):
-                L        = b["slots_len"][i].item()
-                toks     = [lang.id2word[idx] for idx in b["utterances"][i,:L].tolist()]
-                gold_ids = b["y_slots"][i,:L].tolist()
-                pred_ids = sl[i,:L].tolist()
+                L       = b["slots_len"][i].item()
+                utt_ids = b["utterances"][i, :L].tolist()
+                gold_ids= b["y_slots"][i, :L].tolist()
+                pred_ids= sl[i, :L].tolist()
 
                 ref_seq, hyp_seq = [], []
-                for tok, gid, pid in zip(toks, gold_ids, pred_ids):
-                    # look up strings
+                for tok, gid, pid in zip(
+                    [lang.id2word[idx] for idx in utt_ids],
+                    gold_ids,
+                    pred_ids
+                ):
                     gold_tag = lang.id2slot.get(gid, None)
                     pred_tag = lang.id2slot.get(pid, None)
 
-                    # if something’s wrong, print it
-                    if gold_tag is None or pred_tag is None or gold_tag == "pad":
-                        print("  ⚠️ skipping bad tag:", tok, gid, gold_tag, pid, pred_tag)
+                    # skip padding or missing labels on either side
+                    if gold_tag is None or pred_tag is None:
+                        continue
+                    if gold_tag == "pad" or pred_tag == "pad":
                         continue
 
                     ref_seq.append((tok, gold_tag))
@@ -85,7 +92,7 @@ def eval_model(loader, model, slot_cr, intent_cr, lang):
                     all_hyp.append(hyp_seq)
 
     slot_res   = evaluate(all_ref, all_hyp)
-    intent_rep = classification_report(ref_ints, hyp_ints,
-                                       zero_division=False,
-                                       output_dict=True)
+    intent_rep = classification_report(
+        ref_ints, hyp_ints, zero_division=False, output_dict=True
+    )
     return slot_res, intent_rep
