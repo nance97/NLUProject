@@ -4,22 +4,26 @@ from collections import Counter
 from torch.utils.data import DataLoader, Dataset
 import torch
 from sklearn.model_selection import train_test_split
+import urllib.request
 
 PAD_TOKEN = 0
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
-def ensure_atis():
-    """
-    Make sure the ATIS JSONs and conll.py are downloaded
-    """
-    os.makedirs("dataset/ATIS", exist_ok=True)
-    if not os.path.exists("dataset/ATIS/train.json"):
-        os.system("wget -P dataset/ATIS https://raw.githubusercontent.com/BrownFortress/IntentSlotDatasets/main/ATIS/train.json")
-    if not os.path.exists("dataset/ATIS/test.json"):
-        os.system("wget -P dataset/ATIS https://raw.githubusercontent.com/BrownFortress/IntentSlotDatasets/main/ATIS/test.json")
-    if not os.path.exists("dataset/ATIS/conll.py"):
-        os.system("wget -P dataset/ATIS https://raw.githubusercontent.com/BrownFortress/NLU-2024-Labs/main/labs/conll.py")
+# URLs to fetch ATIS + conll.py
+ATIS_URLS = {
+    "train.json": "https://raw.githubusercontent.com/BrownFortress/IntentSlotDatasets/main/ATIS/train.json",
+    "test.json":  "https://raw.githubusercontent.com/BrownFortress/IntentSlotDatasets/main/ATIS/test.json",
+    "conll.py":   "https://raw.githubusercontent.com/BrownFortress/NLU-2024-Labs/main/labs/conll.py",
+}
+
+def ensure_atis(atis_dir="dataset/ATIS"):
+    os.makedirs(atis_dir, exist_ok=True)
+    for fname, url in ATIS_URLS.items():
+        dest = os.path.join(atis_dir, fname) if fname.endswith('.json') else os.path.join(os.getcwd(), fname)
+        if not os.path.exists(dest):
+            print(f"Downloading {fname} …")
+            urllib.request.urlretrieve(url, dest)
 
 
 def load_data(path):
