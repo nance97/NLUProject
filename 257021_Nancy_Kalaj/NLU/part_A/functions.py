@@ -69,6 +69,17 @@ def eval_loop(data, criterion_slots, criterion_intents, model, lang):
 
     with torch.no_grad(): # Disable gradient computation
         for sample in data:
+            for i, sample in enumerate(data):
+                print(f"\n=== BATCH {i} ===")
+                for k, v in sample.items():
+                    if isinstance(v, torch.Tensor):
+                        print(f"  {k}: shape={v.shape}, dtype={v.dtype}")
+                    elif isinstance(v, list):
+                        print(f"  {k}: list of len={len(v)}")
+                    else:
+                        print(f"  {k}: type={type(v)}, value={v}")
+                break  # Remove this break to see all batches, otherwise it just prints the first batch
+
             slots, intents = model(sample['utterances'], sample['slots_len']) # Forward pass
             loss_intent = criterion_intents(intents, sample['intents'])
             loss_slot = criterion_slots(slots, sample['y_slots'])
@@ -92,6 +103,10 @@ def eval_loop(data, criterion_slots, criterion_intents, model, lang):
                 to_decode = seq[:length].tolist()
 
                 ref_slots.append([(utterance[id_el], elem) for id_el, elem in enumerate(gt_slots)])
+                tmp_seq = []
+                for id_el, elem in enumerate(to_decode):
+                    tmp_seq.append((utterance[id_el], lang.id2slot[elem]))
+                hyp_slots.append(tmp_seq)
 
                 if not (len(utterance) == len(gt_slots) == len(to_decode)):
                     print(f"[BAD LENGTH] utt: {len(utterance)}, gt_slots: {len(gt_slots)}, pred: {len(to_decode)}")
@@ -103,30 +118,6 @@ def eval_loop(data, criterion_slots, criterion_intents, model, lang):
                         print(f"[PRED PAD] idx={elem}, id2slot={lang.id2slot[elem]}")
                 if len(ref_slots[-1]) == 0 or len(hyp_slots[-1]) == 0:
                     print(f"[EMPTY SEQ] at batch {id_seq}")
-
-                tmp_seq = []
-                for id_el, elem in enumerate(to_decode):
-                    tmp_seq.append((utterance[id_el], lang.id2slot[elem]))
-                hyp_slots.append(tmp_seq)
-
-    # … right after you build ref_slots & hyp_slots, before evaluate() …
-    for sent_idx, seq in enumerate(hyp_slots):
-        for tok_idx, pair in enumerate(seq):
-            word, tag = pair            # unpack the tuple!
-            if tag.startswith('I-'):
-                # look at the previous predicted tag
-                prev_tag = seq[tok_idx-1][1] if tok_idx > 0 else 'O'
-                _, cur_type = tag.split('-', 1)
-                ok_prev = prev_tag.endswith(cur_type) and prev_tag.startswith(('B-','I-'))
-                if not ok_prev:
-                    print(f"[INVALID IOB] sent={sent_idx}, tok={tok_idx}:")
-                    print(f"  WORD={word!r}, GOLD={ref_slots[sent_idx][tok_idx][1]!r}, PRED={tag!r}")
-                    print("  full GOLD seq:", [t for (_,t) in ref_slots[sent_idx]])
-                    print("  full PRED seq:", [t for (_,t) in seq])
-                    break
-        else:
-            continue
-        break
 
     # now call your normal evaluator
     results = evaluate(ref_slots, hyp_slots)
