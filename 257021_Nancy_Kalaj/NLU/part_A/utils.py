@@ -81,33 +81,70 @@ class Lang:
         return vocab
     
 
+class IntentsAndSlotsDataset(Dataset):
+    """
+    Wraps raw ATIS examples into tensors for LSTM model.
+    Each example: dict with keys 'utterance'(str), 'slots'(str), 'intent'(str).
+    """
+    def __init__(self, examples, lang):
+        self.lang = lang
+        self.utterances = []
+        self.slots = []
+        self.intents = []
+        for ex in examples:
+            self.utterances.append(ex['utterance'].split())
+            self.slots.append(ex['slots'].split())
+            self.intents.append(ex['intent'])
+        self.utt_ids = self._seq2ids(self.utterances, lang.word2id)
+        self.slot_ids = self._seq2ids(self.slots,    lang.slot2id)
+        self.intent_ids = [lang.intent2id[i] for i in self.intents]
+
+    def __len__(self):
+        return len(self.utterances)
+
+    def __getitem__(self, idx):
+        return {
+            'utterance': self.utt_ids[idx],
+            'slots':     self.slot_ids[idx],
+            'intent':    self.intent_ids[idx]
+        }
+
+    def _seq2ids(self, sequences, mapper):
+        res = []
+        for seq in sequences:
+            ids = []
+            for token in seq:
+                ids.append(mapper.get(token, mapper.get('unk', PAD_TOKEN)))
+            res.append(ids)
+        return res
+
+    
 def collate_fn(batch):
     """
-    Custom collate to pad utterances and slots and preserve lengths
+    Collate batch of dicts with lists into padded tensors and lengths.
+    Fields: 'utterance', 'slots', 'intent'.
     """
-    def merge(sequences, pad_value=PAD_TOKEN):
-        lengths = [len(seq) for seq in sequences]
-        max_len = max(lengths)
-        padded = torch.full((len(sequences), max_len), pad_value, dtype=torch.long)
-        for i, seq in enumerate(sequences):
-            padded[i, :lengths[i]] = torch.tensor(seq, dtype=torch.long)
-        return padded, torch.tensor(lengths, dtype=torch.long)
-
     # sort by utterance length desc
     batch.sort(key=lambda x: len(x['utterance']), reverse=True)
     utts = [x['utterance'] for x in batch]
-    slots = [x['slots'] for x in batch]
+    slots = [x['slots']    for x in batch]
     intents = [x['intent'] for x in batch]
-
-    utt_tensor, utt_lengths = merge(utts, PAD_TOKEN)
-    slot_tensor, _ = merge(slots, PAD_TOKEN)
+    # pad sequences
+    lengths = [len(u) for u in utts]
+    max_len = max(lengths)
+    batch_size = len(utts)
+    utt_tensor  = torch.full((batch_size, max_len), PAD_TOKEN, dtype=torch.long)
+    slot_tensor = torch.full((batch_size, max_len), PAD_TOKEN, dtype=torch.long)
+    for i, (u, s) in enumerate(zip(utts, slots)):
+        utt_tensor[i, :len(u)]  = torch.tensor(u, dtype=torch.long)
+        slot_tensor[i, :len(s)] = torch.tensor(s, dtype=torch.long)
     intent_tensor = torch.tensor(intents, dtype=torch.long)
-
+    lengths_tensor= torch.tensor(lengths, dtype=torch.long)
     return {
         'utterances': utt_tensor.to(DEVICE),
-        'slots_len': utt_lengths.to(DEVICE),
-        'y_slots': slot_tensor.to(DEVICE),
-        'intents': intent_tensor.to(DEVICE)
+        'slots_len':  lengths_tensor.to(DEVICE),
+        'y_slots':    slot_tensor.to(DEVICE),
+        'intents':    intent_tensor.to(DEVICE)
     }
 
 

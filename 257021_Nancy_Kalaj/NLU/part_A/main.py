@@ -1,5 +1,5 @@
 import argparse, sys, os, copy, numpy as np, torch, torch.optim as optim, torch.nn as nn
-from utils import ensure_atis, prepare_splits, Lang, make_loader, DEVICE, PAD_TOKEN
+from utils import IntentsAndSlotsDataset, ensure_atis, prepare_splits, Lang, make_loader, DEVICE, PAD_TOKEN
 from functions import build_model, init_weights, train_epoch, eval_model
 
 if __name__ == "__main__":
@@ -13,13 +13,18 @@ if __name__ == "__main__":
 
     ensure_atis()
     sys.path.insert(0, os.path.join(os.getcwd(), 'dataset/ATIS'))
-    train, dev, test = prepare_splits('dataset/ATIS/train.json', 'dataset/ATIS/test.json')
-    lang = Lang(train, dev, test)
+    train_raw, dev_raw, test_raw = prepare_splits('dataset/ATIS/train.json', 'dataset/ATIS/test.json')
+    lang = Lang(train_raw, dev_raw, test_raw)
+
+    # wrap raw examples into Dataset
+    train_ds = IntentsAndSlotsDataset(train_raw, lang)
+    dev_ds   = IntentsAndSlotsDataset(dev_raw, lang)
+    test_ds  = IntentsAndSlotsDataset(test_raw, lang)
 
     loaders = {
-        'train': make_loader(train, lang, bs=128, shuffle=True),
-        'dev': make_loader(dev, lang, bs=64, shuffle=False),
-        'test': make_loader(test, lang, bs=64, shuffle=False),
+        'train': make_loader(train_ds, lang, bs=128, shuffle=True),
+        'dev': make_loader(dev_ds, lang, bs=64, shuffle=False),
+        'test': make_loader(test_ds, lang, bs=64, shuffle=False),
     }
 
     ckpt = f"bin/{args.exp}_best.pt"
