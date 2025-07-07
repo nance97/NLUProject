@@ -96,6 +96,16 @@ def eval_loop(data, criterion_slots, criterion_intents, model, lang):
             output_slots = torch.argmax(slots, dim=1)
             for id_seq, seq in enumerate(output_slots):
                 length = sample['slots_len'].tolist()[id_seq]
+                print(f"  Sequence {id_seq} length: {length}")
+                utt_ids = sample['utterances'][id_seq][:length].tolist()
+                gt_ids = sample['y_slots'][id_seq].tolist()
+                gt_slots = [lang.id2slot[elem] for elem in gt_ids[:length]]
+                to_decode = seq[:length].tolist()
+                pred_slots = [lang.id2slot[elem] for elem in to_decode]
+                print(f"    Gold slot labels: {gt_slots}")
+                print(f"    Pred slot labels: {pred_slots}")
+
+                length = sample['slots_len'].tolist()[id_seq]
                 utt_ids = sample['utterances'][id_seq][:length].tolist()
                 gt_ids = sample['y_slots'][id_seq].tolist()
                 gt_slots = [lang.id2slot[elem] for elem in gt_ids[:length]]
@@ -108,21 +118,9 @@ def eval_loop(data, criterion_slots, criterion_intents, model, lang):
                     tmp_seq.append((utterance[id_el], lang.id2slot[elem]))
                 hyp_slots.append(tmp_seq)
 
-                if not (len(utterance) == len(gt_slots) == len(to_decode)):
-                    print(f"[BAD LENGTH] utt: {len(utterance)}, gt_slots: {len(gt_slots)}, pred: {len(to_decode)}")
-                for elem in gt_ids[:length]:
-                    if lang.id2slot[elem] == 'pad':
-                        print(f"[GT PAD] idx={elem}, id2slot={lang.id2slot[elem]}")
-                for elem in to_decode:
-                    if lang.id2slot[elem] == 'pad':
-                        print(f"[PRED PAD] idx={elem}, id2slot={lang.id2slot[elem]}")
-                if len(ref_slots[-1]) == 0 or len(hyp_slots[-1]) == 0:
-                    print(f"[EMPTY SEQ] at batch {id_seq}")
-
     # now call your normal evaluator
     results = evaluate(ref_slots, hyp_slots)
 
-        
     report_intent = classification_report(ref_intents, hyp_intents, 
                                           zero_division=False, output_dict=True)
     return results, report_intent, loss_array
