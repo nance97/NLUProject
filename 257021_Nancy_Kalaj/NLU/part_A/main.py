@@ -2,9 +2,6 @@ import argparse
 from utils import ensure_atis, prepare_data
 from functions import *
 
-# Paths settings
-TRAIN_DATA_PATH = "dataset/ATIS/train.json"
-TEST_DATA_PATH = "dataset/ATIS/test.json"
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
@@ -18,9 +15,7 @@ if __name__ == "__main__":
     ensure_atis()
 
     # Prepare data
-    train_loader, dev_loader, test_loader, lang = prepare_data(
-        TRAIN_DATA_PATH, TEST_DATA_PATH
-    )
+    train_loader, dev_loader, test_loader, lang = prepare_data("dataset/ATIS/train.json", "dataset/ATIS/test.json")
     print(f"First train batch shapes: ")
     first_batch = next(iter(train_loader))
     print("  Utterances:", first_batch['utterances'].shape, "dtype:", first_batch['utterances'].dtype)
@@ -43,4 +38,4 @@ if __name__ == "__main__":
         train_loader, dev_loader, test_loader, lang, out_int, out_slot, 
         vocab_len, criterion_slots, criterion_intents, cfg
     )
-    
+
