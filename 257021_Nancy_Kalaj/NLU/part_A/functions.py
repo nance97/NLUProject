@@ -76,9 +76,13 @@ def eval_model(loader, model, slot_cr, intent_cr, lang):
                 refs_slots.append(list(zip(utterance, gt_slots)))
                 hyp_slots.append(list(zip(utterance, hyp_seq)))
 
-    bad = [(w, t) for seq in hyp_slots for (w, t) in seq if t is None]
-    if bad:
-        print("⚠ Found None slot labels in hypotheses:\n", bad[:10])
+    # build the sets
+    ref_tags = { tag for seq in refs_slots for (_, tag) in seq }
+    hyp_tags = { tag for seq in hyp_slots for (_, tag) in seq }
+
+    print("→ Reference tags:", sorted(ref_tags))
+    print("→ Hypothesis tags:", sorted(hyp_tags))
+    print("→ In hyp but not in ref:", sorted(hyp_tags - ref_tags))
 
     # Use conlleval for slot metrics
     slot_res = evaluate(refs_slots, hyp_slots)
