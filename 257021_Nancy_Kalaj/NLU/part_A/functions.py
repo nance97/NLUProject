@@ -91,15 +91,19 @@ def eval_loop(data, criterion_slots, criterion_intents, model, lang):
                 utterance = [lang.id2word[elem] for elem in utt_ids]
                 to_decode = seq[:length].tolist()
 
-                # ⬇️ Insert your debugging checks right here ⬇️
-                for elem in gt_ids[:length]:
-                    if elem not in lang.id2slot:
-                        print(f"[BAD GT] elem={elem} not in id2slot")
-                for elem in to_decode:
-                    if elem not in lang.id2slot:
-                        print(f"[BAD PRED] elem={elem} not in id2slot")
-
                 ref_slots.append([(utterance[id_el], elem) for id_el, elem in enumerate(gt_slots)])
+
+                if not (len(utterance) == len(gt_slots) == len(to_decode)):
+                    print(f"[BAD LENGTH] utt: {len(utterance)}, gt_slots: {len(gt_slots)}, pred: {len(to_decode)}")
+                for elem in gt_ids[:length]:
+                    if lang.id2slot[elem] == 'pad':
+                        print(f"[GT PAD] idx={elem}, id2slot={lang.id2slot[elem]}")
+                for elem in to_decode:
+                    if lang.id2slot[elem] == 'pad':
+                        print(f"[PRED PAD] idx={elem}, id2slot={lang.id2slot[elem]}")
+                if len(ref_slots[-1]) == 0 or len(hyp_slots[-1]) == 0:
+                    print(f"[EMPTY SEQ] at batch {id_seq}")
+
                 tmp_seq = []
                 for id_el, elem in enumerate(to_decode):
                     tmp_seq.append((utterance[id_el], lang.id2slot[elem]))
