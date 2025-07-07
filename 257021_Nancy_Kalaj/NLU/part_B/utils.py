@@ -5,7 +5,7 @@ from collections import Counter
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset, DataLoader
 import torch
-from transformers import BertTokenizer
+from transformers import BertTokenizerFast
 
 # where to download ATIS if missing
 ATIS_URLS = {
@@ -90,7 +90,7 @@ class Lang:
 
 class ATISJointDataset(Dataset):
     """ tokenizes and aligns slot labels for BERT """
-    def __init__(self, examples, tokenizer: BertTokenizer, lang: Lang, max_length=50):
+    def __init__(self, examples, tokenizer: BertTokenizerFast, lang: Lang, max_length=50):
         self.examples = examples
         self.tokenizer = tokenizer
         self.slot2id = lang.slot2id
@@ -158,7 +158,7 @@ def prepare_data(
 
     corpus = train_raw + dev_raw + test_raw
     lang = Lang(corpus)
-    tokenizer = BertTokenizer.from_pretrained(tokenizer_name)
+    tokenizer = BertTokenizerFast.from_pretrained(tokenizer_name)
 
     train_ds = ATISJointDataset(train_raw, tokenizer, lang, max_length)
     dev_ds   = ATISJointDataset(dev_raw,   tokenizer, lang, max_length)
