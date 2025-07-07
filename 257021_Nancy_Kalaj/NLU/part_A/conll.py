@@ -12,13 +12,16 @@ def stats():
 def evaluate(ref, hyp, otag='O'):
     # evaluation for NLTK
     aligned = align_hyp(ref, hyp)
-    # DEBUG: what does aligned[0] look like?
-    print("[DEBUG] aligned[0] =", aligned[0])
-    # or to find the first bad one:
-    for i, entry in enumerate(aligned):
-        if None in entry:
-            print(f"[BUG] aligned[{i}] = {entry!r}")
-            break
+
+    for sent_idx, sentence in enumerate(aligned):
+        for tok_idx, triple in enumerate(sentence):
+            word, gold, pred = triple
+            if gold is None or pred is None:
+                print(f"[BUG] sentence {sent_idx}, token {tok_idx}: word={word!r}, gold={gold!r}, pred={pred!r}")
+                break
+        else:
+            continue
+        break
     return conlleval(aligned, otag=otag)
 
 
