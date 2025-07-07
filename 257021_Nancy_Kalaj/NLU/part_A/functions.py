@@ -1,5 +1,4 @@
 import torch
-import copy
 import numpy as np
 import torch.nn as nn
 from collections import defaultdict
@@ -15,77 +14,96 @@ def build_model(cfg, lang):
         n_layers=cfg.get('n_layers',1), drop=cfg.get('dropout',0.0)
     )
 
-
-def init_weights(model):
-    for m in model.modules():
-        if isinstance(m, (nn.LSTM, nn.GRU, nn.RNN)):
+# Initializes the weights of the model layers
+def init_weights(mat):
+    for m in mat.modules():
+        if type(m) in [nn.GRU, nn.LSTM, nn.RNN]:
             for name, param in m.named_parameters():
                 if 'weight_ih' in name:
-                    nn.init.xavier_uniform_(param)
+                    for idx in range(4):
+                        mul = param.shape[0]//4
+                        torch.nn.init.xavier_uniform_(param[idx*mul:(idx+1)*mul])
                 elif 'weight_hh' in name:
-                    nn.init.orthogonal_(param)
+                    for idx in range(4):
+                        mul = param.shape[0]//4
+                        torch.nn.init.orthogonal_(param[idx*mul:(idx+1)*mul])
                 elif 'bias' in name:
                     param.data.fill_(0)
-        elif isinstance(m, nn.Linear):
-            nn.init.uniform_(m.weight, -0.01, 0.01)
-            if m.bias is not None:
-                m.bias.data.fill_(0.01)
+        else:
+            if type(m) in [nn.Linear]:
+                torch.nn.init.uniform_(m.weight, -0.01, 0.01)
+                if m.bias != None:
+                    m.bias.data.fill_(0.01)
 
 
-def train_epoch(loader, model, optimizer, slot_cr, intent_cr, clip=5):
-    model.train()
-    for batch in loader:
-        optimizer.zero_grad()
-        slots, intents = model(batch['utterances'], batch['slots_len'])
-        loss = slot_cr(slots, batch['y_slots']) + intent_cr(intents, batch['intents'])
-        loss.backward()
-        nn.utils.clip_grad_norm_(model.parameters(), clip)
-        optimizer.step()
+# Trains the model for one epoch over the provided data
+def train_loop(data, optimizer, criterion_slots, criterion_intents, model, clip=5):
+    model.train() # Set model to training mode
+    loss_array = []
 
+    for sample in data:
+        optimizer.zero_grad() # Zeroing the gradient
+        slots, intent = model(sample['utterances'], sample['slots_len']) # Forward pass
+        loss_intent = criterion_intents(intent, sample['intents'])
+        loss_slot = criterion_slots(slots, sample['y_slots'])
+        loss = loss_intent + loss_slot # Compute loss; since it's joint training, it is the sum of the individual losses
+        loss_array.append(loss.item())
+        loss.backward() # Compute the gradient
+        torch.nn.utils.clip_grad_norm_(model.parameters(), clip) # clip the gradient to avoid exploding gradients
+        optimizer.step() # Update the weights
 
-def eval_model(loader, model, slot_cr, intent_cr, lang):
-    from conll import evaluate
+    return loss_array
 
-    """
-    Evaluate joint slot and intent model, mirroring original notebook logic.
-    """
-    model.eval()
-    refs_slots, hyp_slots = [], []
-    refs_int,   hyp_int   = [], []
-    with torch.no_grad():
-        for batch in loader:
-            slots, intents = model(batch['utterances'], batch['slots_len'])
+# Evaluates the model over the provided data
+def eval_loop(data, criterion_slots, criterion_intents, model, lang):
+    from conll import evaluate  # type: ignore
+    
+    model.eval() # Set the model to evaluation mode
+    loss_array = []
+    
+    ref_intents = []
+    hyp_intents = []
+    
+    ref_slots = []
+    hyp_slots = []
+
+    with torch.no_grad(): # Disable gradient computation
+        for sample in data:
+            slots, intents = model(sample['utterances'], sample['slots_len']) # Forward pass
+            loss_intent = criterion_intents(intents, sample['intents'])
+            loss_slot = criterion_slots(slots, sample['y_slots'])
+            loss = loss_intent + loss_slot # Compute loss
+            loss_array.append(loss.item())
+
             # Intent inference
-            pred_int = torch.argmax(intents, dim=1).tolist()
-            refs_int.extend([lang.id2intent[i] for i in batch['intents'].tolist()])
-            hyp_int.extend([lang.id2intent[i] for i in pred_int])
-            # Slot inference
+            out_intents = [lang.id2intent[x] for x in torch.argmax(intents, dim=1).tolist()] 
+            gt_intents = [lang.id2intent[x] for x in sample['intents'].tolist()]
+            ref_intents.extend(gt_intents)
+            hyp_intents.extend(out_intents)
+            
+            # Slot inference 
             output_slots = torch.argmax(slots, dim=1)
-            for idx_seq, seq in enumerate(output_slots):
-                length = batch['slots_len'][idx_seq].item()
-                utt_ids = batch['utterances'][idx_seq][:length].tolist()
-                gt_ids  = batch['y_slots'][idx_seq][:length].tolist()
-                # Build reference slot sequence
-                gt_slots = [lang.id2slot[i] for i in gt_ids]
-                utterance = [lang.id2word[i] for i in utt_ids]
-                # Build hypothesis sequence
-                pred_tags = seq[:length].tolist()
-                hyp_seq = [lang.id2slot[p] for p in pred_tags]
-
-                # Combine into (word, tag) tuples
-                refs_slots.append(list(zip(utterance, gt_slots)))
-                hyp_slots.append(list(zip(utterance, hyp_seq)))
-
-    # Use conlleval for slot metrics
-    try:
-        slot_res = evaluate(refs_slots, hyp_slots)
+            for id_seq, seq in enumerate(output_slots):
+                length = sample['slots_len'].tolist()[id_seq]
+                utt_ids = sample['utterances'][id_seq][:length].tolist()
+                gt_ids = sample['y_slots'][id_seq].tolist()
+                gt_slots = [lang.id2slot[elem] for elem in gt_ids[:length]]
+                utterance = [lang.id2word[elem] for elem in utt_ids]
+                to_decode = seq[:length].tolist()
+                ref_slots.append([(utterance[id_el], elem) for id_el, elem in enumerate(gt_slots)])
+                tmp_seq = []
+                for id_el, elem in enumerate(to_decode):
+                    tmp_seq.append((utterance[id_el], lang.id2slot[elem]))
+                hyp_slots.append(tmp_seq)
+    try:            
+        results = evaluate(ref_slots, hyp_slots)
     except Exception as ex:
-        # Sometimes the model predicts a class that is not in REF
         print("Warning:", ex)
-        ref_s = set([t for seq in refs_slots for (_, t) in seq])
-        hyp_s = set([t for seq in hyp_slots for (_, t) in seq])
-        print(hyp_s.difference(ref_s))
-        slot_res = {"total": {"f": 0}}
-    # Classification report for intents
-    intent_res = classification_report(refs_int, hyp_int, output_dict=True, zero_division=False)
-    return slot_res, intent_res
+        ref_s = set([x[1] for x in ref_slots])
+        hyp_s = set([x[1] for x in hyp_slots])
+        print(hyp_s.difference(ref_s)) 
+        results = {"total":{"f":0}}
+        
+    report_intent = classification_report(ref_intents, hyp_intents, 
+                                          zero_division=False, output_dict=True)
+    return results, report_intent, loss_array

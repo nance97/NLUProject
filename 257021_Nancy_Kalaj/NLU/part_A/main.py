@@ -1,6 +1,6 @@
 import argparse, sys, os, copy, numpy as np, torch, torch.optim as optim, torch.nn as nn
-from utils import collate_fn, ensure_atis, prepare_loaders, prepare_splits, Lang, DEVICE, PAD_TOKEN
-from functions import build_model, init_weights, train_epoch, eval_model
+from utils import ensure_atis, prepare_loaders, DEVICE, PAD_TOKEN
+from functions import build_model, eval_loop, init_weights, train_loop
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
@@ -19,43 +19,68 @@ if __name__ == "__main__":
     slot_cr = nn.CrossEntropyLoss(ignore_index=PAD_TOKEN)
     intent_cr = nn.CrossEntropyLoss()
 
-    if args.test:
-        model = build_model(cfg, lang).to(DEVICE)
-        model.load_state_dict(torch.load(ckpt, map_location=DEVICE))
-        slot_res, intent_res = eval_model(test_loader, model, slot_cr, intent_cr, lang)
-        print(f"TEST {args.exp}: Slot F1={slot_res['total']['f']:.4f}, Intent Acc={intent_res['accuracy']:.4f}")
-        sys.exit(0)
-
-    slot_scores, intent_scores = [], []
+    results = {
+        "best_model": None,
+        "slot_f1": 0,
+        "int_acc": 0,
+        "losses_dev": [],
+        "losses_train": [],
+        "sampled_epochs": [],
+    }
+    slot_f1s, intent_acc, best_models = [], [], []
 
     for run in range(5):
-        model = build_model(cfg, lang).to(DEVICE)
-        init_weights(model)
+        model = build_model(cfg, lang)
+        model.apply(init_weights)
         Optim = getattr(optim, cfg['optimizer'])
         optimizer = Optim(model.parameters(), lr=cfg['lr'], weight_decay=cfg.get('weight_decay',0.0))
-
-        best_dev_f1 = 0.0
+        
+        patience = 3
+        losses_train = []
+        losses_dev = []
+        sampled_epochs = []
+        best_f1 = 0
         best_model = None
-        no_improve = 0
+
         for epoch in range(1, 200):
-            train_epoch(train_loader, model, optimizer, slot_cr, intent_cr, clip=5)
-            slot_dev,_ = eval_model(dev_loader, model, slot_cr, intent_cr, lang)
-            f1 = slot_dev['total']['f']
-            if f1 > best_dev_f1:
-                best_dev_f1, best_model, no_improve = f1, copy.deepcopy(model), 0
-            else:
-                no_improve += 1
-            if no_improve >= 3:
-                break
+                loss = train_loop(train_loader, optimizer, slot_cr, intent_cr, model, clip=5)
+                if epoch % 5 == 0: 
+                    sampled_epochs.append(epoch)
+                    losses_train.append(np.asarray(loss).mean())
+                    results_dev, _, loss_dev = eval_loop(dev_loader, slot_cr, intent_cr, model, lang)
+                    losses_dev.append(np.asarray(loss_dev).mean())
+                    
+                    f1 = results_dev['total']['f']
+                    if f1 > best_f1:
+                        best_f1 = f1
+                        best_model = copy.deepcopy(model).to('cpu')
+                        patience = 0
+                    else:
+                        patience -= 1
+                    if patience <= 0:
+                        break 
+        
+        best_model.to(DEVICE)
+        results_test, intent_test, _ = eval_loop(test_loader, slot_cr, intent_cr, best_model, lang)   
+        intent_acc.append(intent_test['accuracy'])
+        slot_f1s.append(results_test['total']['f'])
+        best_models.append((best_model, best_f1))
+        results["losses_dev"].append(losses_dev)
+        results["losses_train"].append(losses_train)
+        results["sampled_epochs"].append(sampled_epochs)
 
-        slot_test, intent_test = eval_model(test_loader, best_model, slot_cr, intent_cr, lang)
-        slot_scores.append(slot_test['total']['f'])
-        intent_scores.append(intent_test['accuracy'])
+        print('Slot F1', results_test['total']['f'])
+        print('Intent Acc', intent_test['accuracy'])
 
-    print(f"Slot F1 = {np.mean(slot_scores):.4f} ± {np.std(slot_scores):.4f}")
-    print(f"Intent Acc = {np.mean(intent_scores):.4f} ± {np.std(intent_scores):.4f}")
+    # Compute and store mean for slot_f1s and intent accuracy
+    slot_f1s = np.asarray(slot_f1s)
+    intent_acc = np.asarray(intent_acc)
 
-    os.makedirs('bin', exist_ok=True)
-    if best_model is None:
-        raise RuntimeError("No model was trained!")
-    torch.save(best_model.state_dict(), ckpt)
+    results["slot_f1"] = round(slot_f1s.mean(),3)
+    results["int_acc"] = round(intent_acc.mean(), 3)
+
+    best_model, _ = max(best_models, key=lambda x: x[1])
+    results["best_model"] = copy.deepcopy(best_model).to('cpu')
+
+    print('Slot F1', results['slot_f1'], '+-', round(slot_f1s.std(),3))
+    print('Intent Acc', results['int_acc'], '+-', round(slot_f1s.std(), 3))
