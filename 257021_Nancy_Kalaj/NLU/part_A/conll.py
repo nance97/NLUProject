@@ -12,10 +12,12 @@ def stats():
 def evaluate(ref, hyp, otag='O'):
     # evaluation for NLTK
     aligned = align_hyp(ref, hyp)
-    # DEBUG: find any None
-    for i, (t, g) in enumerate(aligned):
-        if t is None or g is None:
-            print(f"[BUG] aligned[{i}] = (truth={t!r}, guess={g!r})")
+    # DEBUG: what does aligned[0] look like?
+    print("[DEBUG] aligned[0] =", aligned[0])
+    # or to find the first bad one:
+    for i, entry in enumerate(aligned):
+        if None in entry:
+            print(f"[BUG] aligned[{i}] = {entry!r}")
             break
     return conlleval(aligned, otag=otag)
 
