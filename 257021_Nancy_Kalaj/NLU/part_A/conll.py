@@ -1,10 +1,5 @@
 import re
 
-"""
-Modified version of https://pypi.org/project/conlleval/
-"""
-
-
 def stats():
     return {'cor': 0, 'hyp': 0, 'ref': 0}
 
@@ -106,20 +101,6 @@ def parse_iob(t):
 
 
 def is_boc(lbl, iob, prev_lbl, prev_iob, otag='O'):
-    """
-    is beginning of a chunk
-
-    supports: IOB, IOBE, BILOU schemes
-        - {E,L} --> last
-        - {S,U} --> unit
-
-    :param lbl: current label
-    :param iob: current iob
-    :param prev_lbl: previous label
-    :param prev_iob: previous iob
-    :param otag: out-of-chunk label
-    :return:
-    """
     boc = False
 
     boc = True if iob in ['B', 'S', 'U'] else boc
@@ -135,20 +116,6 @@ def is_boc(lbl, iob, prev_lbl, prev_iob, otag='O'):
 
 
 def is_eoc(lbl, iob, prev_lbl, prev_iob, otag='O'):
-    """
-    is end of a chunk
-
-    supports: IOB, IOBE, BILOU schemes
-        - {E,L} --> last
-        - {S,U} --> unit
-
-    :param lbl: current label
-    :param iob: current iob
-    :param prev_lbl: previous label
-    :param prev_iob: previous iob
-    :param otag: out-of-chunk label
-    :return:
-    """
     eoc = False
 
     eoc = True if iob in ['E', 'L', 'S', 'U'] else eoc
@@ -184,12 +151,6 @@ def summarize(seg, cls):
 
 
 def read_corpus_conll(corpus_file, fs="\t"):
-    """
-    read corpus in CoNLL format
-    :param corpus_file: corpus in conll format
-    :param fs: field separator
-    :return: corpus
-    """
     featn = None  # number of features for consistency check
     sents = []  # list to hold words list sequences
     words = []  # list to hold feature tuples

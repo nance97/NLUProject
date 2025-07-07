@@ -1,67 +1,17 @@
-import os
-import json
-from collections import Counter
-from torch.utils.data import DataLoader, Dataset
 import torch
+import torch.utils.data as data
+from torch.utils.data import DataLoader
+import json
+import os
 from sklearn.model_selection import train_test_split
-import urllib.request
+from collections import Counter
 
-PAD_TOKEN = 0
+# Device settings
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 
-
-# URLs to fetch ATIS + conll.py
-ATIS_URLS = {
-    "train.json": "https://raw.githubusercontent.com/BrownFortress/IntentSlotDatasets/main/ATIS/train.json",
-    "test.json":  "https://raw.githubusercontent.com/BrownFortress/IntentSlotDatasets/main/ATIS/test.json",
-}
-
-def ensure_atis(atis_dir="dataset/ATIS"):
-    os.makedirs(atis_dir, exist_ok=True)
-    for fname, url in ATIS_URLS.items():
-        dest = os.path.join(atis_dir, fname) if fname.endswith('.json') else os.path.join(os.getcwd(), fname)
-        if not os.path.exists(dest):
-            print(f"Downloading {fname} …")
-            urllib.request.urlretrieve(url, dest)
-
-
-def load_data(path):
-    '''
-        input: path/to/data
-        output: json
-    '''
-    dataset = []
-    with open(path) as f:
-        dataset = json.loads(f.read())
-    return dataset
-
-
-def prepare_splits(tmp_train_raw):
-    labels = []
-    inputs = []
-    mini_train = []
-
-    intents = [x['intent'] for x in tmp_train_raw]
-    count_y = Counter(intents)
-    portion = 0.10
-
-    for id_y, y in enumerate(intents):
-        if count_y[y] > 1: 
-            inputs.append(tmp_train_raw[id_y])
-            labels.append(y)
-        else:
-            mini_train.append(tmp_train_raw[id_y])
-    
-    X_train, X_dev, _, _ = train_test_split(inputs, labels, test_size=portion, 
-                                                        random_state=42, 
-                                                        shuffle=True,
-                                                        stratify=labels)
-    X_train.extend(mini_train)
-    train_raw = X_train
-    dev_raw = X_dev
-
-    return train_raw, dev_raw
-
+# Pad token for vocabulary preparation
+PAD_TOKEN = 0
 
 # Computes and stores the vocabulary
 class Lang():
@@ -94,7 +44,7 @@ class Lang():
         return vocab
 
 # Provides ID versions of the datasets
-class IntentsAndSlots (Dataset):
+class IntentsAndSlots (data.Dataset):
     def __init__(self, dataset, lang, unk='unk'):
         self.utterances = []
         self.intents = []
@@ -170,29 +120,89 @@ def collate_fn(data):
     new_item["slots_len"] = y_lengths
     return new_item
 
+# Loads data from the provided path
+def load_data(path):
+    dataset = []
 
-def prepare_loaders(train_path, test_path):
+    with open(path) as f:
+        dataset = json.loads(f.read())
+    return dataset
+
+# Creates validation raw data and final test raw data
+def create_raws(tmp_train_raw):
+    labels = []
+    inputs = []
+    mini_train = []
+
+    intents = [x['intent'] for x in tmp_train_raw]
+    count_y = Counter(intents)
+    portion = 0.10
+
+    for id_y, y in enumerate(intents):
+        if count_y[y] > 1: 
+            inputs.append(tmp_train_raw[id_y])
+            labels.append(y)
+        else:
+            mini_train.append(tmp_train_raw[id_y])
+    
+    X_train, X_dev, _, _ = train_test_split(inputs, labels, test_size=portion, 
+                                                        random_state=42, 
+                                                        shuffle=True,
+                                                        stratify=labels)
+    X_train.extend(mini_train)
+    train_raw = X_train
+    dev_raw = X_dev
+
+    return train_raw, dev_raw
+
+# Creates dataset objects from raw data
+def create_datasets(train_raw, dev_raw, test_raw, lang):
+    train_dataset = IntentsAndSlots(train_raw, lang)
+    dev_dataset = IntentsAndSlots(dev_raw, lang)
+    test_dataset = IntentsAndSlots(test_raw, lang)
+
+    return train_dataset, dev_dataset, test_dataset
+
+# Creates DataLoader objects with padding and batching
+def create_dataloaders(train_dataset, dev_dataset, test_dataset, train_batch_size):
+    train_loader = DataLoader(train_dataset, train_batch_size, collate_fn=collate_fn,  shuffle=True)
+    dev_loader = DataLoader(dev_dataset, batch_size=64, collate_fn=collate_fn)
+    test_loader = DataLoader(test_dataset, batch_size=64, collate_fn=collate_fn)
+                             
+    return train_loader, dev_loader, test_loader
+
+# Prepares raw data, vocabulary, datasets and dataloaders
+def prepare_data(train_path, test_path, model_path, params, configs):
     tmp_train_raw = load_data(train_path)
     test_raw = load_data(test_path)
-    train_raw, dev_raw = prepare_splits(tmp_train_raw)
+    train_raw, dev_raw = create_raws(tmp_train_raw)
 
-    words = sum([x['utterance'].split() for x in train_raw], [])                                                      
-    corpus = train_raw + dev_raw + test_raw
-    slots = set(sum([line['slots'].split() for line in corpus],[]))
-    intents = set([line['intent'] for line in corpus])
-    lang = Lang(words, intents, slots, cutoff=0)
+    if configs["training"]:
+        words = sum([x['utterance'].split() for x in train_raw], [])                                                      
+        corpus = train_raw + dev_raw + test_raw
+        slots = set(sum([line['slots'].split() for line in corpus],[]))
+        intents = set([line['intent'] for line in corpus])
+        lang = Lang(words, intents, slots, cutoff=0)
+    else:
+        if os.path.exists(model_path):
+            saved_data = torch.load(model_path, map_location=DEVICE)
+            lang = Lang([], [], [], cutoff=0)
+            lang.word2id = saved_data['word2id']
+            lang.slot2id = saved_data['slot2id']
+            lang.intent2id = saved_data['intent2id']
+            lang.id2word = {v: k for k, v in lang.word2id.items()}
+            lang.id2slot = {v: k for k, v in lang.slot2id.items()}
+            lang.id2intent = {v: k for k, v in lang.intent2id.items()}
+        else:
+            print(f"Error: No model for the selected config is saved. Exiting.")
+            exit(1)
 
     out_slot = len(lang.slot2id)
     out_int = len(lang.intent2id)
     vocab_len = len(lang.word2id)
 
     # Create datasets and loaders
-    train_dataset = IntentsAndSlots(train_raw, lang)
-    dev_dataset = IntentsAndSlots(dev_raw, lang)
-    test_dataset = IntentsAndSlots(test_raw, lang)
-
-    train_loader = DataLoader(train_dataset, 128, collate_fn=collate_fn,  shuffle=True)
-    dev_loader = DataLoader(dev_dataset, batch_size=64, collate_fn=collate_fn)
-    test_loader = DataLoader(test_dataset, batch_size=64, collate_fn=collate_fn)
+    train_dataset, dev_dataset, test_dataset = create_datasets(train_raw, dev_raw, test_raw, lang)
+    train_loader, dev_loader, test_loader = create_dataloaders(train_dataset, dev_dataset, test_dataset, params["tr_batch_size"])
 
     return train_loader, dev_loader, test_loader, lang, out_slot, out_int, vocab_len

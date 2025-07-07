@@ -1,85 +1,83 @@
-import argparse, sys, os, copy, numpy as np, torch, torch.optim as optim, torch.nn as nn
-from utils import ensure_atis, prepare_loaders, DEVICE, PAD_TOKEN
-from functions import build_model, eval_loop, init_weights, train_loop
+from utils import prepare_data
+from functions import *
+
+# Paths settings
+TRAIN_DATA_PATH = "dataset/train.json"
+TEST_DATA_PATH = "dataset/test.json"
+TESTING_MODELS_PATH = "bin"
+TRAINING_MODELS_PATH = "training_results/models"
+LOG_PATH = "training_results/experiments_log.csv"
+PLOT_PATH = "training_results/plots"
+
+# Default configuration settings
+configs = {
+    "training": True,
+    "use_bidir": False,
+    "use_dropout": False,
+}
+
+# Default training hyperparameters
+params = {
+    "lr": 0.0005,
+    "hid_size": 200,
+    "emb_size": 300,
+    "dropout": 0.3,
+    "tr_batch_size": 128,
+    "clip": 5,
+    "patience_init": 3,
+    "n_epochs": 100,
+    "runs": 5
+}
 
 if __name__ == "__main__":
-    p = argparse.ArgumentParser()
-    p.add_argument("--exp", required=True)
-    p.add_argument("--test", action="store_true")
-    args = p.parse_args()
+    # Select mode and model
+    select_config(configs)
+    model_filename = f"{get_config(configs)}.pt"
+    model_path = os.path.join(TRAINING_MODELS_PATH if configs["training"] else TESTING_MODELS_PATH, model_filename)
 
-    cfg_mod = __import__(f"configs.{args.exp}", fromlist=['CFG'])
-    cfg = cfg_mod.CFG
+    # Prepare data
+    train_loader, dev_loader, test_loader, lang, out_slot, out_int, vocab_len = prepare_data(
+        TRAIN_DATA_PATH, TEST_DATA_PATH, model_path, params, configs
+    )
 
-    ensure_atis()
-    train_loader, dev_loader, test_loader, lang, _, _, _ = prepare_loaders('dataset/ATIS/train.json', 'dataset/ATIS/test.json')
+    # Define the loss functions
+    criterion_slots = nn.CrossEntropyLoss(ignore_index=PAD_TOKEN)
+    criterion_intents = nn.CrossEntropyLoss()
 
-    ckpt = f"bin/{args.exp}_best.pt"
-    slot_cr = nn.CrossEntropyLoss(ignore_index=PAD_TOKEN)
-    intent_cr = nn.CrossEntropyLoss()
-
-    results = {
-        "best_model": None,
-        "slot_f1": 0,
-        "int_acc": 0,
-        "losses_dev": [],
-        "losses_train": [],
-        "sampled_epochs": [],
-    }
-    slot_f1s, intent_acc, best_models = [], [], []
-
-    for run in range(5):
-        model = build_model(cfg, lang).to(DEVICE)
-        model.apply(init_weights)
-        Optim = getattr(optim, cfg['optimizer'])
-        optimizer = Optim(model.parameters(), lr=cfg['lr'], weight_decay=cfg.get('weight_decay',0.0))
+    if configs["training"]: # Training mode
+        # Select the hyperparameters
+        select_params(params)
         
-        patience = 3
-        losses_train = []
-        losses_dev = []
-        sampled_epochs = []
-        best_f1 = 0
-        best_model = None
+        # Train the model
+        results = train_model(
+            train_loader, dev_loader, test_loader, lang, out_int, out_slot, 
+            vocab_len, criterion_slots, criterion_intents, params, configs
+        )
 
-        for epoch in range(1, 200):
-                loss = train_loop(train_loader, optimizer, slot_cr, intent_cr, model, clip=5)
-                if epoch % 5 == 0: 
-                    sampled_epochs.append(epoch)
-                    losses_train.append(np.asarray(loss).mean())
-                    results_dev, _, loss_dev = eval_loop(dev_loader, slot_cr, intent_cr, model, lang)
-                    losses_dev.append(np.asarray(loss_dev).mean())
-                    
-                    f1 = results_dev['total']['f']
-                    if f1 > best_f1:
-                        best_f1 = f1
-                        best_model = copy.deepcopy(model).to('cpu')
-                        patience = 0
-                    else:
-                        patience -= 1
-                    if patience <= 0:
-                        break 
-        
-        best_model.to(DEVICE)
-        results_test, intent_test, _ = eval_loop(test_loader, slot_cr, intent_cr, best_model, lang)   
-        intent_acc.append(intent_test['accuracy'])
-        slot_f1s.append(results_test['total']['f'])
-        best_models.append((best_model, best_f1))
-        results["losses_dev"].append(losses_dev)
-        results["losses_train"].append(losses_train)
-        results["sampled_epochs"].append(sampled_epochs)
+        # Save the model
+        os.makedirs(TRAINING_MODELS_PATH, exist_ok=True)
+        model_data = {
+            "model_state_dict": results["best_model"].state_dict(),
+            "params": params,
+            "word2id": lang.word2id,
+            "slot2id": lang.slot2id,
+            "intent2id": lang.intent2id
+        }
+        torch.save(model_data, model_path)
+        print(f"Saved model data as {model_filename}\n")
 
-        print('Slot F1', results_test['total']['f'])
-        print('Intent Acc', intent_test['accuracy'])
+        # Log and plot results
+        log_results(configs, params, results, LOG_PATH)
+        plot_results(configs, results, LOG_PATH, PLOT_PATH)
 
-    # Compute and store mean for slot_f1s and intent accuracy
-    slot_f1s = np.asarray(slot_f1s)
-    intent_acc = np.asarray(intent_acc)
+    else: # Testing mode
+        # Load the existing model
+        ref_model = load_model_data(model_path, out_int, out_slot, vocab_len, configs)
 
-    results["slot_f1"] = round(slot_f1s.mean(),3)
-    results["int_acc"] = round(intent_acc.mean(), 3)
+        # Evaluate the existing model performances
+        ref_results, ref_intent, _ = eval_loop(test_loader, criterion_slots, criterion_intents, ref_model, lang)
 
-    best_model, _ = max(best_models, key=lambda x: x[1])
-    results["best_model"] = copy.deepcopy(best_model).to('cpu')
-
-    print('Slot F1', results['slot_f1'], '+-', round(slot_f1s.std(),3))
-    print('Intent Acc', results['int_acc'], '+-', round(slot_f1s.std(), 3))
+        # Show results
+        print("\n==================== Test Results ====================")
+        print(f"Results on test set of model with {get_config(configs)}: slot f1 {ref_results['total']['f']}, intent accuracy {ref_intent['accuracy']}")
+        print("=====================================================\n")
