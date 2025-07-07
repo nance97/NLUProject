@@ -69,17 +69,6 @@ def eval_loop(data, criterion_slots, criterion_intents, model, lang):
 
     with torch.no_grad(): # Disable gradient computation
         for sample in data:
-            for i, sample in enumerate(data):
-                print(f"\n=== BATCH {i} ===")
-                for k, v in sample.items():
-                    if isinstance(v, torch.Tensor):
-                        print(f"  {k}: shape={v.shape}, dtype={v.dtype}")
-                    elif isinstance(v, list):
-                        print(f"  {k}: list of len={len(v)}")
-                    else:
-                        print(f"  {k}: type={type(v)}, value={v}")
-                break  # Remove this break to see all batches, otherwise it just prints the first batch
-
             slots, intents = model(sample['utterances'], sample['slots_len']) # Forward pass
             loss_intent = criterion_intents(intents, sample['intents'])
             loss_slot = criterion_slots(slots, sample['y_slots'])
