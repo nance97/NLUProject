@@ -68,9 +68,15 @@ def eval_model(loader, model, slot_cr, intent_cr, lang):
                 # Build reference slot sequence
                 gt_slots = [lang.id2slot[i] for i in gt_ids]
                 utterance = [lang.id2word[i] for i in utt_ids]
-                # Build hypothesis sequence
+                # Build hypothesis sequence with mapping unknown tags to 'O'
                 pred_tags = seq[:length].tolist()
-                hyp_seq = [lang.id2slot[p] for p in pred_tags]
+                hyp_seq = []
+                ref_set = set(gt_slots)
+                for p in pred_tags:
+                    tag = lang.id2slot[p]
+                    if tag not in ref_set:
+                        tag = 'O'
+                    hyp_seq.append(tag)
 
                 # Combine into (word, tag) tuples
                 refs_slots.append(list(zip(utterance, gt_slots)))
