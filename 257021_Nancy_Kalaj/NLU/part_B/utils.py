@@ -149,7 +149,7 @@ def prepare_data(
     test_path: str,
     tokenizer_name: str="bert-base-uncased",
     max_length: int=50,
-    batch_size: int=128
+    batch_size: int=16
 ):
     ensure_atis(os.path.dirname(train_path))
     train_raw = load_data(train_path)

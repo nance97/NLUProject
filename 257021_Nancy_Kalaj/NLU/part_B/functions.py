@@ -117,7 +117,7 @@ def run_bert_multi(
     device,
     runs: int = 5,
     lr: float = 3e-5,
-    num_epochs: int = 5,
+    num_epochs: int = 10,
     patience: int = 3,
 ):
     """

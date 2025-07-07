@@ -9,9 +9,9 @@ from functions import set_seed, run_bert_multi
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--batch_size", type=int, default=128)
+    p.add_argument("--batch_size", type=int, default=16)
     p.add_argument("--max_length", type=int, default=50)
-    p.add_argument("--epochs", type=int, default=5)
+    p.add_argument("--epochs", type=int, default=10)
     p.add_argument("--lr", type=float, default=3e-5)
     p.add_argument("--test", action="store_true")
     args = p.parse_args()
