@@ -90,6 +90,15 @@ def eval_loop(data, criterion_slots, criterion_intents, model, lang):
                 gt_slots = [lang.id2slot[elem] for elem in gt_ids[:length]]
                 utterance = [lang.id2word[elem] for elem in utt_ids]
                 to_decode = seq[:length].tolist()
+
+                # ⬇️ Insert your debugging checks right here ⬇️
+                for elem in gt_ids[:length]:
+                    if elem not in lang.id2slot:
+                        print(f"[BAD GT] elem={elem} not in id2slot")
+                for elem in to_decode:
+                    if elem not in lang.id2slot:
+                        print(f"[BAD PRED] elem={elem} not in id2slot")
+
                 ref_slots.append([(utterance[id_el], elem) for id_el, elem in enumerate(gt_slots)])
                 tmp_seq = []
                 for id_el, elem in enumerate(to_decode):
@@ -117,6 +126,7 @@ def eval_loop(data, criterion_slots, criterion_intents, model, lang):
 
     # now call your normal evaluator
     results = evaluate(ref_slots, hyp_slots)
+
         
     report_intent = classification_report(ref_intents, hyp_intents, 
                                           zero_division=False, output_dict=True)
