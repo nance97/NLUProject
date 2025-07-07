@@ -25,16 +25,35 @@ def load_data(path):
     with open(path, "r") as f:
         return json.load(f)
 
-def create_raws(train_raw, dev_size=0.1, seed=42):
-    intents = [ex["intent"] for ex in train_raw]
-    train, dev = train_test_split(
-        train_raw,
+def create_raws(tmp_train_raw, dev_size=0.10, seed=42):
+    # Count how often each intent occurs
+    intents     = [ex["intent"] for ex in tmp_train_raw]
+    count_y     = Counter(intents)
+    inputs      = []     # examples with intent freq > 1
+    labels      = []     # their intents (for stratification)
+    mini_train  = []     # singleton-intent examples
+
+    # Split off singletons
+    for ex, intent in zip(tmp_train_raw, intents):
+        if count_y[intent] > 1:
+            inputs.append(ex)
+            labels.append(intent)
+        else:
+            mini_train.append(ex)
+
+    # Stratified split on the frequent-intent examples
+    X_train, X_dev, _, _ = train_test_split(
+        inputs,
+        labels,
         test_size=dev_size,
-        stratify=intents,
+        stratify=labels,
         random_state=seed,
         shuffle=True
     )
-    return train, dev
+
+    # Put all singletons back into the training set
+    X_train.extend(mini_train)
+    return X_train, X_dev
 
 class Lang:
     """ build vocab for words, slots, intents """
@@ -127,10 +146,10 @@ def atis_collate_fn(batch):
 
 def prepare_data(
     train_path: str,
-    test_path:  str,
+    test_path: str,
     tokenizer_name: str="bert-base-uncased",
-    max_length:    int=50,
-    batch_size:    int=16
+    max_length: int=50,
+    batch_size: int=128
 ):
     ensure_atis(os.path.dirname(train_path))
     train_raw = load_data(train_path)
