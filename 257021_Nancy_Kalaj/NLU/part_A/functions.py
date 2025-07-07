@@ -1,98 +1,68 @@
-import torch, torch.nn as nn, math
+import torch
+import copy
+import numpy as np
+import torch.nn as nn
+from collections import defaultdict
+from dataset.ATIS.conll import evaluate
 from sklearn.metrics import classification_report
-from model import ModelIAS
+
 
 def build_model(cfg, lang):
+    from model import ModelIAS
     return ModelIAS(
-      vocab_size = len(lang.word2id),
-      emb_size   = cfg["emb_size"],
-      hid_size   = cfg["hid_size"],
-      n_slots    = len(lang.slot2id),
-      n_intents  = len(lang.intent2id),
-      pad_idx    = lang.word2id["pad"],
-      n_layers   = cfg.get("n_layers",1),
-      drop       = cfg.get("dropout",0.0)
+        vocab_size=len(lang.word2id), emb_size=cfg['emb_size'],
+        hid_size=cfg['hid_size'], n_slots=len(lang.slot2id),
+        n_intents=len(lang.intent2id), pad_idx=lang.word2id['pad'],
+        n_layers=cfg.get('n_layers',1), drop=cfg.get('dropout',0.0)
     )
 
-def init_weights(model: nn.Module):
-    """
-    Initialize RNN/LSTM with Xavier/orthogonal and Linear uniformly.
-    """
-    for module in model.modules():
-        if isinstance(module, nn.LSTM):
-            for name, param in module.named_parameters():
-                if 'weight_ih' in name:
-                    nn.init.xavier_uniform_(param.data)
-                elif 'weight_hh' in name:
-                    nn.init.orthogonal_(param.data)
-                elif 'bias' in name:
-                    param.data.zero_()
-        elif isinstance(module, nn.Linear):
-            nn.init.uniform_(module.weight, -0.01, 0.01)
-            if module.bias is not None:
-                module.bias.data.fill_(0.01)
 
-def train_epoch(loader, model, opt, slot_cr, intent_cr, clip):
+def init_weights(model):
+    for m in model.modules():
+        if isinstance(m, (nn.LSTM, nn.GRU, nn.RNN)):
+            for name, param in m.named_parameters():
+                if 'weight_ih' in name:
+                    nn.init.xavier_uniform_(param)
+                elif 'weight_hh' in name:
+                    nn.init.orthogonal_(param)
+                elif 'bias' in name:
+                    param.data.fill_(0)
+        elif isinstance(m, nn.Linear):
+            nn.init.uniform_(m.weight, -0.01, 0.01)
+            if m.bias is not None:
+                m.bias.data.fill_(0.01)
+
+
+def train_epoch(loader, model, optimizer, slot_cr, intent_cr, clip=5):
     model.train()
-    losses = []
-    for b in loader:
-        opt.zero_grad()
-        s_logits, i_logits = model(b["utterances"], b["slots_len"])
-        l_slot   = slot_cr(s_logits, b["y_slots"])
-        l_intent = intent_cr(i_logits,  b["intents"])
-        (l_slot + l_intent).backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), clip)
-        opt.step()
-        losses.append((l_slot + l_intent).item())
-    return sum(losses) / len(losses)
+    for batch in loader:
+        optimizer.zero_grad()
+        slots, intents = model(batch['utterances'], batch['slots_len'])
+        loss = slot_cr(slots, batch['y_slots']) + intent_cr(intents, batch['intents'])
+        loss.backward()
+        nn.utils.clip_grad_norm_(model.parameters(), clip)
+        optimizer.step()
+
 
 def eval_model(loader, model, slot_cr, intent_cr, lang):
-    from conll import evaluate
-
     model.eval()
-    all_ref, all_hyp = [], []
-    ref_ints, hyp_ints = [], []
+    losses = []
+    refs_slots, hyps_slots = [], []
+    refs_int, hyps_int = [], []
     with torch.no_grad():
-        for b in loader:
-            s_logits, i_logits = model(b["utterances"], b["slots_len"])
-
-            # Intent preds
-            preds_int = i_logits.argmax(-1).tolist()
-            ref_ints += [lang.id2intent[i] for i in b["intents"].tolist()]
-            hyp_ints += [lang.id2intent[p] for p in preds_int]
-
-            # Slot preds
-            sl = s_logits.argmax(1)  # (B, T)
-            for i in range(len(b["slots_len"])):
-                L       = b["slots_len"][i].item()
-                utt_ids = b["utterances"][i, :L].tolist()
-                gold_ids= b["y_slots"][i, :L].tolist()
-                pred_ids= sl[i, :L].tolist()
-
-                ref_seq, hyp_seq = [], []
-                for tok, gid, pid in zip(
-                    [lang.id2word[idx] for idx in utt_ids],
-                    gold_ids,
-                    pred_ids
-                ):
-                    gold_tag = lang.id2slot.get(gid, None)
-                    pred_tag = lang.id2slot.get(pid, None)
-
-                    # skip padding or missing labels on either side
-                    if gold_tag is None or pred_tag is None:
-                        continue
-                    if gold_tag == "pad" or pred_tag == "pad":
-                        continue
-
-                    ref_seq.append((tok, gold_tag))
-                    hyp_seq.append((tok, pred_tag))
-
-                if ref_seq and hyp_seq:
-                    all_ref.append(ref_seq)
-                    all_hyp.append(hyp_seq)
-
-    slot_res   = evaluate(all_ref, all_hyp)
-    intent_rep = classification_report(
-        ref_ints, hyp_ints, zero_division=False, output_dict=True
-    )
-    return slot_res, intent_rep
+        for batch in loader:
+            slots, intents = model(batch['utterances'], batch['slots_len'])
+            losses.append((slot_cr(slots, batch['y_slots']) + intent_cr(intents, batch['intents'])).item())
+            pred_int = torch.argmax(intents, dim=1).tolist()
+            refs_int.extend([lang.id2intent[x] for x in batch['intents'].tolist()])
+            hyps_int.extend([lang.id2intent[x] for x in pred_int])
+            pred_slots = torch.argmax(slots, dim=1)
+            for i, seq in enumerate(pred_slots):
+                length = batch['slots_len'][i].item()
+                utt_ids = batch['utterances'][i][:length].tolist()
+                gt_ids = batch['y_slots'][i][:length].tolist()
+                refs_slots.append([(lang.id2word[w], lang.id2slot[s]) for w,s in zip(utt_ids, gt_ids)])
+                hyps_slots.append([(lang.id2word[w], lang.id2slot[s]) for w,s in zip(utt_ids, seq[:length].tolist())])
+    slot_res = evaluate(refs_slots, hyps_slots)
+    intent_res = classification_report(refs_int, hyps_int, output_dict=True, zero_division=False)
+    return slot_res, intent_res
