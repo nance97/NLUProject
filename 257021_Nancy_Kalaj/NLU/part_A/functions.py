@@ -96,27 +96,26 @@ def eval_loop(data, criterion_slots, criterion_intents, model, lang):
                     tmp_seq.append((utterance[id_el], lang.id2slot[elem]))
                 hyp_slots.append(tmp_seq)
 
-    # SANITY-CHECK all your IOB sequences:
+    # … right after you build ref_slots & hyp_slots, before evaluate() …
     for sent_idx, seq in enumerate(hyp_slots):
-        for tok_idx, tag in enumerate(seq):
+        for tok_idx, pair in enumerate(seq):
+            word, tag = pair            # unpack the tuple!
             if tag.startswith('I-'):
-                # what was the previous predicted tag?
-                prev = seq[tok_idx-1] if tok_idx>0 else 'O'
-                # legal iff prev is B-<same> or I-<same>
-                _, cur_type = tag.split('-',1)
-                ok_prev = (prev.endswith(cur_type) and prev.startswith(('B-','I-')))
+                # look at the previous predicted tag
+                prev_tag = seq[tok_idx-1][1] if tok_idx > 0 else 'O'
+                _, cur_type = tag.split('-', 1)
+                ok_prev = prev_tag.endswith(cur_type) and prev_tag.startswith(('B-','I-'))
                 if not ok_prev:
-                    print(f"[INVALID IOB] sent {sent_idx}, tok {tok_idx}: prev={prev!r}, cur={tag!r}")
-                    # dump that entire sentence to inspect
-                    print("  WORDS:", [w for w,_ in ref_slots[sent_idx]])
-                    print("  GOLD :", ref_slots[sent_idx])
-                    print("  PRED :", hyp_slots[sent_idx])
+                    print(f"[INVALID IOB] sent={sent_idx}, tok={tok_idx}:")
+                    print(f"  WORD={word!r}, GOLD={ref_slots[sent_idx][tok_idx][1]!r}, PRED={tag!r}")
+                    print("  full GOLD seq:", [t for (_,t) in ref_slots[sent_idx]])
+                    print("  full PRED seq:", [t for (_,t) in seq])
                     break
         else:
             continue
         break
 
-    # Let it crash so you actually see the error and stack trace
+    # now call your normal evaluator
     results = evaluate(ref_slots, hyp_slots)
         
     report_intent = classification_report(ref_intents, hyp_intents, 
