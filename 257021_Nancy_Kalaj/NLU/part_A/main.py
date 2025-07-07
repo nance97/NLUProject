@@ -30,7 +30,7 @@ if __name__ == "__main__":
     slot_f1s, intent_acc, best_models = [], [], []
 
     for run in range(5):
-        model = build_model(cfg, lang)
+        model = build_model(cfg, lang).to(DEVICE)
         model.apply(init_weights)
         Optim = getattr(optim, cfg['optimizer'])
         optimizer = Optim(model.parameters(), lr=cfg['lr'], weight_decay=cfg.get('weight_decay',0.0))
