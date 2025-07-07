@@ -159,5 +159,5 @@ def collate_fn(data):
     }
 
 
-def make_loader(dataset, lang, bs=32, shuffle=False, collate_fn=collate_fn):
+def make_loader(dataset, bs=32, shuffle=False, collate_fn=collate_fn):
     return DataLoader(dataset, batch_size=bs, shuffle=shuffle, collate_fn=collate_fn)

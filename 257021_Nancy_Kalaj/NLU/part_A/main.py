@@ -22,9 +22,9 @@ if __name__ == "__main__":
     test_ds = IntentsAndSlotsDataset(test_raw, lang)
 
     loaders = {
-        'train': make_loader(train_ds, lang, bs=128, shuffle=True),
-        'dev': make_loader(dev_ds, lang, bs=64, shuffle=False),
-        'test': make_loader(test_ds, lang, bs=64, shuffle=False),
+        'train': make_loader(train_ds, bs=128, shuffle=True),
+        'dev': make_loader(dev_ds, bs=64, shuffle=False),
+        'test': make_loader(test_ds, bs=64, shuffle=False),
     }
 
     ckpt = f"bin/{args.exp}_best.pt"
