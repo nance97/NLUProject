@@ -3,6 +3,7 @@ import numpy as np
 import torch.nn as nn
 from collections import defaultdict
 from sklearn.metrics import classification_report
+from conll import evaluate
 
 
 def build_model(cfg, lang):
@@ -56,7 +57,6 @@ def train_loop(data, optimizer, criterion_slots, criterion_intents, model, clip=
 
 # Evaluates the model over the provided data
 def eval_loop(data, criterion_slots, criterion_intents, model, lang):
-    from conll import evaluate  # type: ignore
     
     model.eval() # Set the model to evaluation mode
     loss_array = []

@@ -12,7 +12,6 @@ if __name__ == "__main__":
     cfg = cfg_mod.CFG
 
     ensure_atis()
-    sys.path.insert(0, os.path.join(os.getcwd(), 'dataset/ATIS'))
     train_loader, dev_loader, test_loader, lang, _, _, _ = prepare_loaders('dataset/ATIS/train.json', 'dataset/ATIS/test.json')
 
     ckpt = f"bin/{args.exp}_best.pt"

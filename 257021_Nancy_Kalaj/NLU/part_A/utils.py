@@ -14,7 +14,6 @@ DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 ATIS_URLS = {
     "train.json": "https://raw.githubusercontent.com/BrownFortress/IntentSlotDatasets/main/ATIS/train.json",
     "test.json":  "https://raw.githubusercontent.com/BrownFortress/IntentSlotDatasets/main/ATIS/test.json",
-    "conll.py":   "https://raw.githubusercontent.com/BrownFortress/NLU-2024-Labs/main/labs/conll.py",
 }
 
 def ensure_atis(atis_dir="dataset/ATIS"):
