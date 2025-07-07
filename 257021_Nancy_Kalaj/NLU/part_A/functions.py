@@ -3,7 +3,6 @@ import copy
 import numpy as np
 import torch.nn as nn
 from collections import defaultdict
-from dataset.ATIS.conll import evaluate
 from sklearn.metrics import classification_report
 
 
@@ -45,6 +44,8 @@ def train_epoch(loader, model, optimizer, slot_cr, intent_cr, clip=5):
 
 
 def eval_model(loader, model, slot_cr, intent_cr, lang):
+    from conll import evaluate
+    
     model.eval()
     losses = []
     refs_slots, hyps_slots = [], []
