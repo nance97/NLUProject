@@ -1,3 +1,4 @@
+import pprint
 import torch
 import numpy as np
 import torch.nn as nn
@@ -85,16 +86,6 @@ def eval_loop(data, criterion_slots, criterion_intents, model, lang):
             output_slots = torch.argmax(slots, dim=1)
             for id_seq, seq in enumerate(output_slots):
                 length = sample['slots_len'].tolist()[id_seq]
-                print(f"  Sequence {id_seq} length: {length}")
-                utt_ids = sample['utterances'][id_seq][:length].tolist()
-                gt_ids = sample['y_slots'][id_seq].tolist()
-                gt_slots = [lang.id2slot[elem] for elem in gt_ids[:length]]
-                to_decode = seq[:length].tolist()
-                pred_slots = [lang.id2slot[elem] for elem in to_decode]
-                print(f"    Gold slot labels: {gt_slots}")
-                print(f"    Pred slot labels: {pred_slots}")
-
-                length = sample['slots_len'].tolist()[id_seq]
                 utt_ids = sample['utterances'][id_seq][:length].tolist()
                 gt_ids = sample['y_slots'][id_seq].tolist()
                 gt_slots = [lang.id2slot[elem] for elem in gt_ids[:length]]
@@ -106,6 +97,17 @@ def eval_loop(data, criterion_slots, criterion_intents, model, lang):
                 for id_el, elem in enumerate(to_decode):
                     tmp_seq.append((utterance[id_el], lang.id2slot[elem]))
                 hyp_slots.append(tmp_seq)
+
+    print("\n\n--- FINAL REF_SLOTS/HYP_SLOTS SHAPES AND SAMPLE ---")
+    print(f"len(ref_slots): {len(ref_slots)}")
+    print(f"len(hyp_slots): {len(hyp_slots)}")
+    if len(ref_slots) > 0:
+        print(f"len(ref_slots[0]): {len(ref_slots[0])}")
+        print(f"len(hyp_slots[0]): {len(hyp_slots[0])}")
+        print("First ref_slots[0]:")
+        pprint.pprint(ref_slots[0])
+        print("First hyp_slots[0]:")
+        pprint.pprint(hyp_slots[0])
 
     # now call your normal evaluator
     results = evaluate(ref_slots, hyp_slots)
