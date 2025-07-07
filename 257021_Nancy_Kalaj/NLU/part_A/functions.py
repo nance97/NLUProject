@@ -87,7 +87,7 @@ def eval_loop(data, criterion_slots, criterion_intents, model, lang):
     return results, report_intent, loss_array
 
 # Runs the whole training process for the model for multiple times (= runs) and provides a final evaluation on its average performances
-def train_model(train_loader, dev_loader, test_loader, lang, out_int, out_slot, vocab_len, criterion_slots, criterion_intents, params):
+def train_model(train_loader, dev_loader, test_loader, lang, out_int, out_slot, vocab_len, criterion_slots, criterion_intents, cfg):
     results = {
         "best_model": None,
         "slot_f1": 0,
@@ -98,20 +98,21 @@ def train_model(train_loader, dev_loader, test_loader, lang, out_int, out_slot, 
     }
     slot_f1s, intent_acc, best_models = [], [], []
 
-    for run in tqdm(range(0, params["runs"])):
-        model = build_model(out_slot, out_int, vocab_len, params)
+    for run in tqdm(range(0, 5)):
+        model = build_model(out_slot, out_int, vocab_len, cfg)
         model.apply(init_weights)
-        optimizer = optim.Adam(model.parameters(), lr=params["lr"])
+        Optim = getattr(optim, cfg['optimizer'])
+        optimizer = Optim(model.parameters(), lr=cfg['lr'], weight_decay=cfg.get('weight_decay',0.0))
         
-        patience = params["patience_init"]
+        patience = 3
         losses_train = []
         losses_dev = []
         sampled_epochs = []
         best_f1 = 0
         best_model = None
 
-        for epoch in tqdm(range(1,params["n_epochs"])):
-                loss = train_loop(train_loader, optimizer, criterion_slots, criterion_intents, model, clip=params["clip"])
+        for epoch in tqdm(range(1,100)):
+                loss = train_loop(train_loader, optimizer, criterion_slots, criterion_intents, model, clip=5)
                 if epoch % 5 == 0: 
                     sampled_epochs.append(epoch)
                     losses_train.append(np.asarray(loss).mean())
@@ -122,7 +123,7 @@ def train_model(train_loader, dev_loader, test_loader, lang, out_int, out_slot, 
                     if f1 > best_f1:
                         best_f1 = f1
                         best_model = copy.deepcopy(model).to('cpu')
-                        patience = params["patience_init"]
+                        patience = 3
                     else:
                         patience -= 1
                     if patience <= 0:
@@ -177,26 +178,16 @@ def init_weights(mat):
                     m.bias.data.fill_(0.01)
 
 # Initializes the model with the provided settings
-def build_model(out_slot, out_int, vocab_len, params):
+def build_model(out_slot, out_int, vocab_len, cfg):
     from model import ModelIAS
     model = ModelIAS(
-        vocab_size=vocab_len, emb_size=params["emb_size"],
-        hid_size=params["hid_size"], n_slots=out_slot,
+        vocab_size=vocab_len, emb_size=cfg['emb_size'],
+        hid_size=cfg['hid_size'], n_slots=out_slot,
         n_intents=out_int, pad_idx=PAD_TOKEN,
         n_layers=1, drop=0.0
     ).to(DEVICE)
 
     return model
-
-# Loads an existing model from the provided path
-def load_model_data(model_path, out_int, out_slot, vocab_len, configs):
-    print("\nLoading the existing model...\n")
-    saved_data = torch.load(model_path, map_location=DEVICE)
-    ref_model = build_model(out_slot, out_int, vocab_len, saved_data['params'])
-    ref_model.load_state_dict(saved_data['model_state_dict'])
-    ref_model.to(DEVICE)
-
-    return ref_model
 
 # Casts a string value to a specified type with error handling
 def cast_value(value, to_type):
@@ -205,35 +196,3 @@ def cast_value(value, to_type):
     except ValueError:
         print(f"Invalid type: expected {to_type.__name__}. Please try again.")
         return None
-
-# Prints the current parameters' values
-def print_params(params):
-    print("\nCurrent parameters values:")
-    for k, v in params.items():
-        print(f"  {k}: {v}")
-
-# Allows the user to modify training hyperparameters via terminal input
-def select_params(params):
-    print_params(params)
-    choice_input = input("\nWould you like to change any of the parameters above? [y/n]: ").strip().lower()
-    if choice_input not in {"y", "n"}:
-        print("Invalid input. Defaulting to no.")
-        choice_input = "n"
-    changing = choice_input == "y"
-
-    while changing:
-        key = input("Enter the parameter name to change (e.g., lr, hid_size): ").strip()
-        if key not in params:
-            print(f"'{key}' is not a valid parameter. Please insert a valid one.")
-        else:
-            new_val = input(f"Enter new value for '{key}' (current: {params[key]}): ").strip()
-            casted_val = cast_value(new_val, type(params[key]))
-            if casted_val is not None:
-                params[key] = casted_val
-                print(f"Updated '{key}' to {casted_val}\n")
-                changing = False
-
-        if not changing:
-            print_params(params)
-            more = input("Change another parameter? [y/n]: ").strip().lower()
-            changing = more == "y"
