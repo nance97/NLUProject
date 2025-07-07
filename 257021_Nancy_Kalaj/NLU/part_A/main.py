@@ -1,6 +1,6 @@
 import argparse, numpy as np, torch.optim as optim, torch.nn as nn
 from functions import train_model, build_model
-from utils import PAD_TOKEN, ensure_atis, prepare_data
+from utils import DEVICE, PAD_TOKEN, ensure_atis, prepare_data
 
 
 TRAIN_DATA_PATH = "dataset/ATIS/train.json"
@@ -23,6 +23,7 @@ if __name__ == "__main__":
     )
 
     model = build_model(cfg, lang)
+    model.to(DEVICE)
 
     criterion_slots = nn.CrossEntropyLoss(ignore_index=PAD_TOKEN)
     criterion_intents = nn.CrossEntropyLoss()

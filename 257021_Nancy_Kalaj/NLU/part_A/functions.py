@@ -13,8 +13,6 @@ import matplotlib.pyplot as plt
 from model import *
 from utils import PAD_TOKEN
 
-# Device settings
-DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 def build_model(cfg, lang):
     from model import ModelIAS
