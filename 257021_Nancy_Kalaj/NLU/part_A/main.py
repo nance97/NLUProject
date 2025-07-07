@@ -43,3 +43,4 @@ if __name__ == "__main__":
         train_loader, dev_loader, test_loader, lang, out_int, out_slot, 
         vocab_len, criterion_slots, criterion_intents, cfg
     )
+    
