@@ -17,7 +17,7 @@ def build_model(cfg, lang):
     return ModelIAS(
         vocab_size=len(lang.word2id), emb_size=cfg['emb_size'],
         hid_size=cfg['hid_size'], n_slots=len(lang.slot2id),
-        n_intents=len(lang.intent2id), pad_idx=PAD_TOKEN,
+        n_intents=len(lang.intent2id), pad_idx=lang.word2id['pad'],
         n_layers=cfg.get('n_layers',1), drop=cfg.get('dropout',0.0)
     )
 
@@ -114,6 +114,14 @@ def train_model(train_loader, dev_loader, test_loader, lang, model, criterion_sl
         sampled_epochs = []
         best_f1 = 0
         best_model = None
+
+        print("model.pad_idx:", PAD_TOKEN)
+        print("vocab_size:", len(lang.word2id))
+        print("n_slots:", len(lang.slot2id))
+        print("n_intents:", len(lang.intent2id))
+        print("First utterance batch shape:", next(iter(train_loader))['utterances'].shape)
+        print("First utterance batch dtype:", next(iter(train_loader))['utterances'].dtype)
+
 
         for epoch in tqdm(range(1,200)):
                 loss = train_loop(train_loader, optimizer, criterion_slots, criterion_intents, model, clip=5)
