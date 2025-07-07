@@ -26,8 +26,14 @@ def ensure_atis(atis_dir="dataset/ATIS"):
 
 
 def load_data(path):
+    '''
+        input: path/to/data
+        output: json
+    '''
+    dataset = []
     with open(path) as f:
-        return json.load(f)
+        dataset = json.loads(f.read())
+    return dataset
 
 
 def prepare_splits(tmp_train_raw):
