@@ -38,8 +38,6 @@ if __name__ == "__main__":
         print(f"TEST {args.exp}: Slot F1={slot_res['total']['f']:.4f}, Intent Acc={intent_res['accuracy']:.4f}")
         sys.exit(0)
 
-    best_dev_f1 = 0.0
-    best_model = None
     slot_scores, intent_scores = [], []
 
     for run in range(5):
@@ -48,6 +46,8 @@ if __name__ == "__main__":
         Optim = getattr(optim, cfg['optimizer'])
         optimizer = Optim(model.parameters(), lr=cfg['lr'], weight_decay=cfg.get('weight_decay',0.0))
 
+        best_dev_f1 = 0.0
+        best_model = None
         no_improve = 0
         for epoch in range(1, 200):
             train_epoch(loaders['train'], model, optimizer, slot_cr, intent_cr, clip=5)
@@ -60,8 +60,7 @@ if __name__ == "__main__":
             if no_improve >= 3:
                 break
 
-        slot_test,_ = eval_model(loaders['test'], best_model, slot_cr, intent_cr, lang)
-        intent_test = eval_model(loaders['test'], best_model, slot_cr, intent_cr, lang)[1]
+        slot_test, intent_test = eval_model(loaders['test'], best_model, slot_cr, intent_cr, lang)
         slot_scores.append(slot_test['total']['f'])
         intent_scores.append(intent_test['accuracy'])
 
