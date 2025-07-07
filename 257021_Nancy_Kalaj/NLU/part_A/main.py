@@ -14,6 +14,9 @@ if __name__ == "__main__":
     ensure_atis()
     sys.path.insert(0, os.path.join(os.getcwd(), 'dataset/ATIS'))
     train_raw, dev_raw, test_raw = prepare_splits('dataset/ATIS/train.json', 'dataset/ATIS/test.json')
+    print('TRAIN size:', len(train_raw))
+    print('DEV size:', len(dev_raw))
+    print('TEST size:', len(test_raw))
     lang = Lang(train_raw, dev_raw, test_raw)
 
     # wrap raw examples into Dataset
