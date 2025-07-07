@@ -96,10 +96,25 @@ def eval_loop(data, criterion_slots, criterion_intents, model, lang):
                     tmp_seq.append((utterance[id_el], lang.id2slot[elem]))
                 hyp_slots.append(tmp_seq)
 
-    # DEBUG: print sizes
-    print(f"[DEBUG] #sentences: ref={len(ref_slots)}, hyp={len(hyp_slots)}")
-    print("[DEBUG] first 5 sentence lengths (ref vs hyp):",
-          [(len(r), len(h)) for r, h in zip(ref_slots[:5], hyp_slots[:5])])
+    # SANITY-CHECK all your IOB sequences:
+    for sent_idx, seq in enumerate(hyp_slots):
+        for tok_idx, tag in enumerate(seq):
+            if tag.startswith('I-'):
+                # what was the previous predicted tag?
+                prev = seq[tok_idx-1] if tok_idx>0 else 'O'
+                # legal iff prev is B-<same> or I-<same>
+                _, cur_type = tag.split('-',1)
+                ok_prev = (prev.endswith(cur_type) and prev.startswith(('B-','I-')))
+                if not ok_prev:
+                    print(f"[INVALID IOB] sent {sent_idx}, tok {tok_idx}: prev={prev!r}, cur={tag!r}")
+                    # dump that entire sentence to inspect
+                    print("  WORDS:", [w for w,_ in ref_slots[sent_idx]])
+                    print("  GOLD :", ref_slots[sent_idx])
+                    print("  PRED :", hyp_slots[sent_idx])
+                    break
+        else:
+            continue
+        break
 
     # Let it crash so you actually see the error and stack trace
     results = evaluate(ref_slots, hyp_slots)

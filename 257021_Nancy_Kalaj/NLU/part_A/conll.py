@@ -12,16 +12,6 @@ def stats():
 def evaluate(ref, hyp, otag='O'):
     # evaluation for NLTK
     aligned = align_hyp(ref, hyp)
-
-    for sent_idx, sentence in enumerate(aligned):
-        for tok_idx, triple in enumerate(sentence):
-            word, gold, pred = triple
-            if gold is None or pred is None:
-                print(f"[BUG] sentence {sent_idx}, token {tok_idx}: word={word!r}, gold={gold!r}, pred={pred!r}")
-                break
-        else:
-            continue
-        break
     return conlleval(aligned, otag=otag)
 
 
