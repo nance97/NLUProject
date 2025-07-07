@@ -16,6 +16,15 @@ from utils import PAD_TOKEN
 # Device settings
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
+def build_model(cfg, lang):
+    from model import ModelIAS
+    return ModelIAS(
+        vocab_size=len(lang.word2id), emb_size=cfg['emb_size'],
+        hid_size=cfg['hid_size'], n_slots=len(lang.slot2id),
+        n_intents=len(lang.intent2id), pad_idx=lang.word2id['pad'],
+        n_layers=cfg.get('n_layers',1), drop=cfg.get('dropout',0.0)
+    )
+
 # Trains the model for one epoch over the provided data
 def train_loop(data, optimizer, criterion_slots, criterion_intents, model, clip=5):
     model.train() # Set model to training mode
@@ -87,7 +96,7 @@ def eval_loop(data, criterion_slots, criterion_intents, model, lang):
     return results, report_intent, loss_array
 
 # Runs the whole training process for the model for multiple times (= runs) and provides a final evaluation on its average performances
-def train_model(train_loader, dev_loader, test_loader, lang, out_int, out_slot, vocab_len, criterion_slots, criterion_intents, params, configs):
+def train_model(train_loader, dev_loader, test_loader, lang, model, criterion_slots, criterion_intents, cfg):
     results = {
         "best_model": None,
         "slot_f1": 0,
@@ -98,20 +107,20 @@ def train_model(train_loader, dev_loader, test_loader, lang, out_int, out_slot, 
     }
     slot_f1s, intent_acc, best_models = [], [], []
 
-    for run in tqdm(range(0, params["runs"])):
-        model = init_model(out_slot, out_int, vocab_len, params, configs)
+    for run in tqdm(range(0, 5)):
         model.apply(init_weights)
-        optimizer = optim.Adam(model.parameters(), lr=params["lr"])
+        optimizer_cls = getattr(torch.optim, cfg.get("optimizer", "Adam"))
+        optimizer = optimizer_cls(model.parameters(), lr=cfg["lr"], weight_decay=cfg.get("weight_decay", 0.0))
         
-        patience = params["patience_init"]
+        patience = 3
         losses_train = []
         losses_dev = []
         sampled_epochs = []
         best_f1 = 0
         best_model = None
 
-        for epoch in tqdm(range(1,params["n_epochs"])):
-                loss = train_loop(train_loader, optimizer, criterion_slots, criterion_intents, model, clip=params["clip"])
+        for epoch in tqdm(range(1,200)):
+                loss = train_loop(train_loader, optimizer, criterion_slots, criterion_intents, model, clip=5)
                 if epoch % 5 == 0: 
                     sampled_epochs.append(epoch)
                     losses_train.append(np.asarray(loss).mean())
@@ -122,7 +131,7 @@ def train_model(train_loader, dev_loader, test_loader, lang, out_int, out_slot, 
                     if f1 > best_f1:
                         best_f1 = f1
                         best_model = copy.deepcopy(model).to('cpu')
-                        patience = params["patience_init"]
+                        patience = 0
                     else:
                         patience -= 1
                     if patience <= 0:
@@ -175,175 +184,3 @@ def init_weights(mat):
                 torch.nn.init.uniform_(m.weight, -0.01, 0.01)
                 if m.bias != None:
                     m.bias.data.fill_(0.01)
-
-# Initializes the model with the provided settings
-def init_model(out_slot, out_int, vocab_len, params, configs):
-    model = ModelIAS(
-        params["hid_size"], params["emb_size"], out_slot, out_int,
-        vocab_len, params["dropout"], configs["use_bidir"], configs["use_dropout"], pad_index=PAD_TOKEN
-    ).to(DEVICE)
-    
-    return model
-
-# Loads an existing model from the provided path
-def load_model_data(model_path, out_int, out_slot, vocab_len, configs):
-    print("\nLoading the existing model...\n")
-    saved_data = torch.load(model_path, map_location=DEVICE)
-    ref_model = init_model(out_slot, out_int, vocab_len, saved_data['params'], configs)
-    ref_model.load_state_dict(saved_data['model_state_dict'])
-    ref_model.to(DEVICE)
-
-    return ref_model
-
-# Allows the user to set the desired mode and model configuration
-def select_config(configs):
-    mode_input = input("Train or test mode? [train/test]: ").strip().lower()
-    if mode_input not in {"train", "test"}:
-        print("Invalid input. Defaulting to test mode.")
-        mode_input = "test"
-    configs["training"] = mode_input == "train"
-
-    config_options = [
-        "Basic model",
-        "Bidirectional",
-        "Bidirectional + dropout",
-    ]
-    print("Choose model configuration:")
-    start_idx = 0 if configs["training"] else 1
-    for idx in range(start_idx, len(config_options)):
-        print(f"{idx}. {config_options[idx]}")
-    valid_choices = {str(i) for i in range(start_idx, len(config_options))}
-
-    choice = None
-    while choice not in valid_choices:
-        choice = input(f"Enter your choice between {sorted(valid_choices)}: ").strip()
-        if choice not in valid_choices:
-            print(f"Invalid choice. Please select one between {sorted(valid_choices)}.")
-    configs["use_bidir"] = choice in {"1", "2"}
-    configs["use_dropout"] = choice in {"2"}
-
-    # Print summary
-    print("\n==================== Selected Configuration ====================")
-    print(f"Mode: {'Training' if configs['training'] else 'Testing'}")
-    print(f"Bidirectionality: {'Enabled' if configs['use_bidir'] else 'Disabled'}")
-    print(f"Dropout: {'Enabled' if configs['use_dropout'] else 'Disabled'}")
-    print("===============================================================\n")
-
-# Returns a string summarizing the selected model configuration
-def get_config(configs):
-    parts = []
-    if configs["use_bidir"]:
-        parts.append("Bidirectional")
-    if configs["use_dropout"]:
-        parts.append("Dropout")
-        
-    return " + ".join(parts) if parts else "Basic model"
-
-# Casts a string value to a specified type with error handling
-def cast_value(value, to_type):
-    try:
-        return to_type(value)
-    except ValueError:
-        print(f"Invalid type: expected {to_type.__name__}. Please try again.")
-        return None
-
-# Prints the current parameters' values
-def print_params(params):
-    print("\nCurrent parameters values:")
-    for k, v in params.items():
-        print(f"  {k}: {v}")
-
-# Allows the user to modify training hyperparameters via terminal input
-def select_params(params):
-    print_params(params)
-    choice_input = input("\nWould you like to change any of the parameters above? [y/n]: ").strip().lower()
-    if choice_input not in {"y", "n"}:
-        print("Invalid input. Defaulting to no.")
-        choice_input = "n"
-    changing = choice_input == "y"
-
-    while changing:
-        key = input("Enter the parameter name to change (e.g., lr, hid_size): ").strip()
-        if key not in params:
-            print(f"'{key}' is not a valid parameter. Please insert a valid one.")
-        else:
-            new_val = input(f"Enter new value for '{key}' (current: {params[key]}): ").strip()
-            casted_val = cast_value(new_val, type(params[key]))
-            if casted_val is not None:
-                params[key] = casted_val
-                print(f"Updated '{key}' to {casted_val}\n")
-                changing = False
-
-        if not changing:
-            print_params(params)
-            more = input("Change another parameter? [y/n]: ").strip().lower()
-            changing = more == "y"
-
-# Creates a unique experiment ID based on config count in the log file
-def get_experiment_id(configs, log_path):
-    config = get_config(configs)
-    config_count = 0
-    if os.path.exists(log_path):
-        with open(log_path, mode="r") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                if row["model_config"] == config:
-                    config_count += 1
-    config_id = f"{config}_v{config_count + 1}"
-
-    return config_id
-
-# Plots training results
-def plot_results(configs, results, log_path, plot_path):
-    # Get the experiment id and make a subfolder for plots
-    config_id = get_experiment_id(configs, log_path)
-    folder_name = os.path.join(plot_path, config_id)
-    os.makedirs(folder_name, exist_ok=True)
-
-    # Plot one graph per run
-    for run_idx, (epochs, train_losses, dev_losses) in enumerate(
-        zip(results["sampled_epochs"], results["losses_train"], results["losses_dev"])
-    ):
-        plt.figure()
-        plt.plot(epochs, train_losses, label="Training Loss", marker="o")
-        plt.plot(epochs, dev_losses, label="Dev Loss", marker="x")
-        plt.xlabel("Epoch")
-        plt.ylabel("Loss")
-        plt.title(f"Run {run_idx + 1}: Training and Dev Loss")
-        plt.legend()
-        plt.grid(True)
-        plt.tight_layout()
-        
-        filename = f"{config_id}_run_{run_idx + 1}.png"
-        filepath = os.path.join(folder_name, filename)
-        plt.savefig(filepath)
-        plt.close()
-
-# Logs training results
-def log_results(configs, params, results, log_path):
-    # Get the experiment id
-    config_id = get_experiment_id(configs, log_path)
-
-    # Log and save training results
-    log_fields = [
-        "experiment_id", "model_config", "lr", "training_batch_size", "hid_size", 
-        "emb_size", "dropout", "slot_f1", "int_accuracy", "notes"
-    ]
-    if not os.path.exists(log_path):
-        with open(log_path, mode="w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=log_fields)
-            writer.writeheader()
-    with open(log_path, mode="a", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=log_fields)
-        writer.writerow({
-            "experiment_id": config_id,
-            "model_config": get_config(configs),
-            "lr": params["lr"],
-            "training_batch_size": params["tr_batch_size"],
-            "hid_size": params["hid_size"],
-            "emb_size": params["emb_size"],
-            "dropout": params["dropout"],
-            "slot_f1": results["slot_f1"],
-            "int_accuracy": results["int_acc"],
-            "notes": ""
-        })

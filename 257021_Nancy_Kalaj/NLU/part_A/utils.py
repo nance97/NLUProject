@@ -5,10 +5,24 @@ import json
 import os
 from sklearn.model_selection import train_test_split
 from collections import Counter
+import urllib.request
 
 # Device settings
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
+
+# URLs to fetch ATIS + conll.py
+ATIS_URLS = {
+    "train.json": "https://raw.githubusercontent.com/BrownFortress/IntentSlotDatasets/main/ATIS/train.json",
+    "test.json":  "https://raw.githubusercontent.com/BrownFortress/IntentSlotDatasets/main/ATIS/test.json",
+}
+
+def ensure_atis(atis_dir="dataset/ATIS"):
+    os.makedirs(atis_dir, exist_ok=True)
+    for fname, url in ATIS_URLS.items():
+        dest = os.path.join(atis_dir, fname) if fname.endswith('.json') else os.path.join(os.getcwd(), fname)
+        if not os.path.exists(dest):
+            print(f"Downloading {fname} …")
+            urllib.request.urlretrieve(url, dest)
 
 # Pad token for vocabulary preparation
 PAD_TOKEN = 0
@@ -172,37 +186,22 @@ def create_dataloaders(train_dataset, dev_dataset, test_dataset, train_batch_siz
     return train_loader, dev_loader, test_loader
 
 # Prepares raw data, vocabulary, datasets and dataloaders
-def prepare_data(train_path, test_path, model_path, params, configs):
+def prepare_data(train_path, test_path, train_batch_size=128, dev_batch_size=64, test_batch_size=64):
+    # Only take in what you need
     tmp_train_raw = load_data(train_path)
     test_raw = load_data(test_path)
     train_raw, dev_raw = create_raws(tmp_train_raw)
 
-    if configs["training"]:
-        words = sum([x['utterance'].split() for x in train_raw], [])                                                      
-        corpus = train_raw + dev_raw + test_raw
-        slots = set(sum([line['slots'].split() for line in corpus],[]))
-        intents = set([line['intent'] for line in corpus])
-        lang = Lang(words, intents, slots, cutoff=0)
-    else:
-        if os.path.exists(model_path):
-            saved_data = torch.load(model_path, map_location=DEVICE)
-            lang = Lang([], [], [], cutoff=0)
-            lang.word2id = saved_data['word2id']
-            lang.slot2id = saved_data['slot2id']
-            lang.intent2id = saved_data['intent2id']
-            lang.id2word = {v: k for k, v in lang.word2id.items()}
-            lang.id2slot = {v: k for k, v in lang.slot2id.items()}
-            lang.id2intent = {v: k for k, v in lang.intent2id.items()}
-        else:
-            print(f"Error: No model for the selected config is saved. Exiting.")
-            exit(1)
+    # Build vocab on the union of all splits
+    words = sum([x['utterance'].split() for x in train_raw], [])                                                      
+    corpus = train_raw + dev_raw + test_raw
+    slots = set(sum([line['slots'].split() for line in corpus],[]))
+    intents = set([line['intent'] for line in corpus])
+    lang = Lang(words, intents, slots, cutoff=0)
 
-    out_slot = len(lang.slot2id)
-    out_int = len(lang.intent2id)
-    vocab_len = len(lang.word2id)
-
-    # Create datasets and loaders
     train_dataset, dev_dataset, test_dataset = create_datasets(train_raw, dev_raw, test_raw, lang)
-    train_loader, dev_loader, test_loader = create_dataloaders(train_dataset, dev_dataset, test_dataset, params["tr_batch_size"])
+    train_loader, dev_loader, test_loader = create_dataloaders(
+        train_dataset, dev_dataset, test_dataset, train_batch_size
+    )
 
-    return train_loader, dev_loader, test_loader, lang, out_slot, out_int, vocab_len
+    return train_loader, dev_loader, test_loader, lang
