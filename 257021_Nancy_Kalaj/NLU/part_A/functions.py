@@ -68,22 +68,24 @@ def eval_model(loader, model, slot_cr, intent_cr, lang):
                 # Build reference slot sequence
                 gt_slots = [lang.id2slot[i] for i in gt_ids]
                 utterance = [lang.id2word[i] for i in utt_ids]
-                # Build hypothesis sequence with mapping unknown tags to 'O'
+                # Build hypothesis sequence
                 pred_tags = seq[:length].tolist()
-                hyp_seq = []
-                ref_set = set(gt_slots)
-                for p in pred_tags:
-                    tag = lang.id2slot[p]
-                    if tag not in ref_set:
-                        tag = 'O'
-                    hyp_seq.append(tag)
+                hyp_seq = [lang.id2slot[p] for p in pred_tags]
 
                 # Combine into (word, tag) tuples
                 refs_slots.append(list(zip(utterance, gt_slots)))
                 hyp_slots.append(list(zip(utterance, hyp_seq)))
 
     # Use conlleval for slot metrics
-    slot_res = evaluate(refs_slots, hyp_slots)
+    try:
+        slot_res = evaluate(refs_slots, hyp_slots)
+    except Exception as ex:
+        # Sometimes the model predicts a class that is not in REF
+        print("Warning:", ex)
+        ref_s = set([t for seq in refs_slots for (_, t) in seq])
+        hyp_s = set([t for seq in hyp_slots for (_, t) in seq])
+        print(hyp_s.difference(ref_s))
+        slot_res = {"total": {"f": 0}}
     # Classification report for intents
     intent_res = classification_report(refs_int, hyp_int, output_dict=True, zero_division=False)
     return slot_res, intent_res
