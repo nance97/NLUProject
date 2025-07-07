@@ -18,9 +18,7 @@ if __name__ == "__main__":
     ensure_atis()
 
     # Use default or config batch sizes as you prefer
-    train_loader, dev_loader, test_loader, lang = prepare_data(
-        TRAIN_DATA_PATH, TEST_DATA_PATH
-    )
+    train_loader, dev_loader, test_loader, lang = prepare_data(TRAIN_DATA_PATH, TEST_DATA_PATH)
 
     model = build_model(cfg, lang)
     model.to(DEVICE)

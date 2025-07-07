@@ -186,7 +186,7 @@ def create_dataloaders(train_dataset, dev_dataset, test_dataset, train_batch_siz
     return train_loader, dev_loader, test_loader
 
 # Prepares raw data, vocabulary, datasets and dataloaders
-def prepare_data(train_path, test_path, train_batch_size=128, dev_batch_size=64, test_batch_size=64):
+def prepare_data(train_path, test_path, train_batch_size=128):
     # Only take in what you need
     tmp_train_raw = load_data(train_path)
     test_raw = load_data(test_path)

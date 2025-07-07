@@ -7,11 +7,9 @@ import torch.optim as optim
 import copy
 from conll import evaluate
 from sklearn.metrics import classification_report
-import csv
-import matplotlib.pyplot as plt
 
 from model import *
-from utils import PAD_TOKEN
+from utils import DEVICE, PAD_TOKEN
 
 
 def build_model(cfg, lang):
