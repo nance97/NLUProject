@@ -18,7 +18,7 @@ def build_model(cfg, lang):
         vocab_size=len(lang.word2id), emb_size=cfg['emb_size'],
         hid_size=cfg['hid_size'], n_slots=len(lang.slot2id),
         n_intents=len(lang.intent2id), pad_idx=lang.word2id['pad'],
-        n_layers=cfg.get('n_layers',1), drop=cfg.get('dropout',0.0)
+        n_layers=1, drop=cfg.get('dropout',0.0)
     )
 
 # Trains the model for one epoch over the provided data
