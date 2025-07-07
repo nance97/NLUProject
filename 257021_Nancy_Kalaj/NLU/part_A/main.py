@@ -1,5 +1,5 @@
 import argparse, sys, os, copy, numpy as np, torch, torch.optim as optim, torch.nn as nn
-from utils import IntentsAndSlotsDataset, collate_fn, ensure_atis, prepare_splits, Lang, make_loader, DEVICE, PAD_TOKEN
+from utils import collate_fn, ensure_atis, prepare_loaders, prepare_splits, Lang, DEVICE, PAD_TOKEN
 from functions import build_model, init_weights, train_epoch, eval_model
 
 if __name__ == "__main__":
@@ -13,22 +13,7 @@ if __name__ == "__main__":
 
     ensure_atis()
     sys.path.insert(0, os.path.join(os.getcwd(), 'dataset/ATIS'))
-    train_raw, dev_raw, test_raw = prepare_splits('dataset/ATIS/train.json', 'dataset/ATIS/test.json')
-    print('TRAIN size:', len(train_raw))
-    print('DEV size:', len(dev_raw))
-    print('TEST size:', len(test_raw))
-    lang = Lang(train_raw, dev_raw, test_raw)
-
-    # wrap raw examples into Dataset
-    train_ds = IntentsAndSlotsDataset(train_raw, lang)
-    dev_ds = IntentsAndSlotsDataset(dev_raw, lang)
-    test_ds = IntentsAndSlotsDataset(test_raw, lang)
-
-    loaders = {
-        'train': make_loader(train_ds, bs=128, shuffle=True, collate_fn=collate_fn),
-        'dev': make_loader(dev_ds, bs=64, shuffle=False, collate_fn=collate_fn),
-        'test': make_loader(test_ds, bs=64, shuffle=False, collate_fn=collate_fn),
-    }
+    train_loader, dev_loader, test_loader, lang, _, _, _ = prepare_loaders('dataset/ATIS/train.json', 'dataset/ATIS/test.json')
 
     ckpt = f"bin/{args.exp}_best.pt"
     slot_cr = nn.CrossEntropyLoss(ignore_index=PAD_TOKEN)
@@ -37,7 +22,7 @@ if __name__ == "__main__":
     if args.test:
         model = build_model(cfg, lang).to(DEVICE)
         model.load_state_dict(torch.load(ckpt, map_location=DEVICE))
-        slot_res, intent_res = eval_model(loaders['test'], model, slot_cr, intent_cr, lang)
+        slot_res, intent_res = eval_model(test_loader, model, slot_cr, intent_cr, lang)
         print(f"TEST {args.exp}: Slot F1={slot_res['total']['f']:.4f}, Intent Acc={intent_res['accuracy']:.4f}")
         sys.exit(0)
 
@@ -53,8 +38,8 @@ if __name__ == "__main__":
         best_model = None
         no_improve = 0
         for epoch in range(1, 200):
-            train_epoch(loaders['train'], model, optimizer, slot_cr, intent_cr, clip=5)
-            slot_dev,_ = eval_model(loaders['dev'], model, slot_cr, intent_cr, lang)
+            train_epoch(train_loader, model, optimizer, slot_cr, intent_cr, clip=5)
+            slot_dev,_ = eval_model(dev_loader, model, slot_cr, intent_cr, lang)
             f1 = slot_dev['total']['f']
             if f1 > best_dev_f1:
                 best_dev_f1, best_model, no_improve = f1, copy.deepcopy(model), 0
@@ -63,7 +48,7 @@ if __name__ == "__main__":
             if no_improve >= 3:
                 break
 
-        slot_test, intent_test = eval_model(loaders['test'], best_model, slot_cr, intent_cr, lang)
+        slot_test, intent_test = eval_model(test_loader, best_model, slot_cr, intent_cr, lang)
         slot_scores.append(slot_test['total']['f'])
         intent_scores.append(intent_test['accuracy'])
 
