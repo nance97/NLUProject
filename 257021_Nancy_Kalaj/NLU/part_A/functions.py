@@ -184,7 +184,7 @@ def build_model(out_slot, out_int, vocab_len, cfg):
         vocab_size=vocab_len, emb_size=cfg['emb_size'],
         hid_size=cfg['hid_size'], n_slots=out_slot,
         n_intents=out_int, pad_idx=PAD_TOKEN,
-        n_layers=1, drop=0.0
+        drop=cfg['dropout']
     ).to(DEVICE)
 
     return model
