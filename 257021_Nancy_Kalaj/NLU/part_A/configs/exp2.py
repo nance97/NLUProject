@@ -4,7 +4,7 @@ CFG = {
     "hid_size":     200,
     "emb_size":     300,
     "dropout":      0.1,
-    "optimizer":    "SGD",
+    "optimizer":    "Adam",
     "lr":           1e-4,
     "weight_decay": 0.0,
 }

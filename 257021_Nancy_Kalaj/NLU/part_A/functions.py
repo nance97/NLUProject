@@ -7,14 +7,44 @@ import torch.optim as optim
 import copy
 from conll import evaluate
 from sklearn.metrics import classification_report
-import csv
-import matplotlib.pyplot as plt   
 
 from model import *
 from utils import PAD_TOKEN
 
-# Device settings
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+# Initializes the weights of the model layers
+def init_weights(mat):
+    for m in mat.modules():
+        if type(m) in [nn.GRU, nn.LSTM, nn.RNN]:
+            for name, param in m.named_parameters():
+                if 'weight_ih' in name:
+                    for idx in range(4):
+                        mul = param.shape[0]//4
+                        torch.nn.init.xavier_uniform_(param[idx*mul:(idx+1)*mul])
+                elif 'weight_hh' in name:
+                    for idx in range(4):
+                        mul = param.shape[0]//4
+                        torch.nn.init.orthogonal_(param[idx*mul:(idx+1)*mul])
+                elif 'bias' in name:
+                    param.data.fill_(0)
+        else:
+            if type(m) in [nn.Linear]:
+                torch.nn.init.uniform_(m.weight, -0.01, 0.01)
+                if m.bias != None:
+                    m.bias.data.fill_(0.01)
+
+# Initializes the model with the provided settings
+def build_model(out_slot, out_int, vocab_len, cfg):
+    from model import ModelIAS
+    model = ModelIAS(
+        vocab_size=vocab_len, emb_size=cfg['emb_size'],
+        hid_size=cfg['hid_size'], n_slots=out_slot,
+        n_intents=out_int, pad_idx=PAD_TOKEN,
+        drop=cfg['dropout']
+    ).to(DEVICE)
+
+    return model
 
 # Trains the model for one epoch over the provided data
 def train_loop(data, optimizer, criterion_slots, criterion_intents, model, clip=5):
@@ -155,44 +185,3 @@ def train_model(train_loader, dev_loader, test_loader, lang, out_int, out_slot, 
     print('Intent Acc', results['int_acc'], '+-', round(slot_f1s.std(), 3))
 
     return results
-
-# Initializes the weights of the model layers
-def init_weights(mat):
-    for m in mat.modules():
-        if type(m) in [nn.GRU, nn.LSTM, nn.RNN]:
-            for name, param in m.named_parameters():
-                if 'weight_ih' in name:
-                    for idx in range(4):
-                        mul = param.shape[0]//4
-                        torch.nn.init.xavier_uniform_(param[idx*mul:(idx+1)*mul])
-                elif 'weight_hh' in name:
-                    for idx in range(4):
-                        mul = param.shape[0]//4
-                        torch.nn.init.orthogonal_(param[idx*mul:(idx+1)*mul])
-                elif 'bias' in name:
-                    param.data.fill_(0)
-        else:
-            if type(m) in [nn.Linear]:
-                torch.nn.init.uniform_(m.weight, -0.01, 0.01)
-                if m.bias != None:
-                    m.bias.data.fill_(0.01)
-
-# Initializes the model with the provided settings
-def build_model(out_slot, out_int, vocab_len, cfg):
-    from model import ModelIAS
-    model = ModelIAS(
-        vocab_size=vocab_len, emb_size=cfg['emb_size'],
-        hid_size=cfg['hid_size'], n_slots=out_slot,
-        n_intents=out_int, pad_idx=PAD_TOKEN,
-        drop=cfg['dropout']
-    ).to(DEVICE)
-
-    return model
-
-# Casts a string value to a specified type with error handling
-def cast_value(value, to_type):
-    try:
-        return to_type(value)
-    except ValueError:
-        print(f"Invalid type: expected {to_type.__name__}. Please try again.")
-        return None

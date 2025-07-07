@@ -5,12 +5,9 @@ import json
 import os
 from sklearn.model_selection import train_test_split
 from collections import Counter
-
 import urllib.request
 
-# Device settings
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 
 # Pad token for vocabulary preparation
 PAD_TOKEN = 0
