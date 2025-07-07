@@ -1,9 +1,9 @@
-from utils import prepare_data
+from utils import ensure_atis, prepare_data
 from functions import *
 
 # Paths settings
-TRAIN_DATA_PATH = "dataset/train.json"
-TEST_DATA_PATH = "dataset/test.json"
+TRAIN_DATA_PATH = "dataset/ATIS/train.json"
+TEST_DATA_PATH = "dataset/ATIS/test.json"
 TESTING_MODELS_PATH = "bin"
 TRAINING_MODELS_PATH = "training_results/models"
 LOG_PATH = "training_results/experiments_log.csv"
@@ -34,6 +34,8 @@ if __name__ == "__main__":
     select_config(configs)
     model_filename = f"{get_config(configs)}.pt"
     model_path = os.path.join(TRAINING_MODELS_PATH if configs["training"] else TESTING_MODELS_PATH, model_filename)
+
+    ensure_atis()
 
     # Prepare data
     train_loader, dev_loader, test_loader, lang = prepare_data(

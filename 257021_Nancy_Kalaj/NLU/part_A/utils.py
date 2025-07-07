@@ -6,12 +6,28 @@ import os
 from sklearn.model_selection import train_test_split
 from collections import Counter
 
+import urllib.request
+
 # Device settings
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 
 # Pad token for vocabulary preparation
 PAD_TOKEN = 0
+
+# URLs to fetch ATIS + conll.py
+ATIS_URLS = {
+    "train.json": "https://raw.githubusercontent.com/BrownFortress/IntentSlotDatasets/main/ATIS/train.json",
+    "test.json":  "https://raw.githubusercontent.com/BrownFortress/IntentSlotDatasets/main/ATIS/test.json",
+}
+
+def ensure_atis(atis_dir="dataset/ATIS"):
+    os.makedirs(atis_dir, exist_ok=True)
+    for fname, url in ATIS_URLS.items():
+        dest = os.path.join(atis_dir, fname) if fname.endswith('.json') else os.path.join(os.getcwd(), fname)
+        if not os.path.exists(dest):
+            print(f"Downloading {fname} …")
+            urllib.request.urlretrieve(url, dest)
 
 # Computes and stores the vocabulary
 class Lang():
