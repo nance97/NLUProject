@@ -2,7 +2,9 @@ import random
 import numpy as np
 import torch
 from sklearn.metrics import accuracy_score
+from model import BertForJointIntentSlot
 from conll import evaluate
+from transformers import AdamW
 
 def set_seed(seed: int):
     random.seed(seed)
@@ -51,12 +53,15 @@ def eval_loop_bert(data_loader, model, tokenizer, lang, device):
 def train_model(
     train_loader, dev_loader, model, tokenizer, lang,
     optimizer, slot_criterion, intent_criterion,
-    num_epochs, device
+    num_epochs, device,
+    patience: int = 3
 ):
     best_f1 = 0.0
-    best_model = None
+    best_state = None
+    epochs_no_improve = 0
 
-    for epoch in range(1, num_epochs+1):
+    for epoch in range(1, num_epochs + 1):
+        # --- train epoch ---
         model.train()
         total_loss = 0.0
         for batch in train_loader:
@@ -78,14 +83,86 @@ def train_model(
             total_loss += loss.item()
 
         avg_train = total_loss / len(train_loader)
+
+        # --- eval on dev ---
         slot_res, intent_acc = eval_loop_bert(dev_loader, model, tokenizer, lang, device)
         dev_f1 = slot_res["total"]["f"]
         print(f"Ep{epoch} — train_loss: {avg_train:.4f}, dev_f1: {dev_f1:.4f}, dev_int_acc: {intent_acc:.4f}")
 
+        # --- early stopping check ---
         if dev_f1 > best_f1:
             best_f1 = dev_f1
-            best_model = model.state_dict()
+            best_state = model.state_dict()
+            epochs_no_improve = 0
+        else:
+            epochs_no_improve += 1
+            if epochs_no_improve >= patience:
+                print(f"Stopping early at epoch {epoch} (no improvement in {patience} epochs).")
+                break
 
-    # load best
-    model.load_state_dict(best_model)
+    # load best model weights
+    if best_state is not None:
+        model.load_state_dict(best_state)
     return model
+
+def run_bert_multi(
+    train_loader,
+    dev_loader,
+    test_loader,
+    tokenizer,
+    lang,
+    pretrained_model_name: str,
+    slot_criterion,
+    intent_criterion,
+    device,
+    runs: int = 5,
+    lr: float = 3e-5,
+    num_epochs: int = 5,
+    patience: int = 3,
+):
+    """
+    Perform `runs` independent BERT fine-tuning experiments
+    (each with early stopping on dev F1), then evaluate on test.
+    Returns:
+      slot_f1s           List[float]  — slot-F1 for each run
+      intent_accs        List[float]  — intent-acc for each run
+      best_model_states  List[dict]   — state_dict of each run’s best model
+    """
+    slot_f1s = []
+    intent_accs = []
+    best_model_states = []
+
+    for run in range(runs):
+        seed = 42 + run
+        set_seed(seed)
+
+        # instantiate fresh model & optimizer
+        model = BertForJointIntentSlot(
+            pretrained_model_name,
+            n_intents=len(lang.intent2id),
+            n_slots=len(lang.slot2id),
+            dropout=0.1
+        ).to(device)
+        optimizer = AdamW(model.parameters(), lr=lr)
+
+        # train with early stopping
+        model = train_model(
+            train_loader, dev_loader,
+            model, tokenizer, lang,
+            optimizer,
+            slot_criterion, intent_criterion,
+            num_epochs, device,
+            patience=patience
+        )
+
+        # final test eval
+        slot_res, acc = eval_loop_bert(test_loader, model, tokenizer, lang, device)
+        slot_f1 = slot_res["total"]["f"]
+        slot_f1s.append(slot_f1)
+        intent_accs.append(acc)
+        best_model_states.append(model.state_dict())
+
+        print(f"Run {run+1}/{runs}: slot-F1={slot_f1:.4f}, intent-acc={acc:.4f}")
+
+    return slot_f1s, intent_accs, best_model_states
+
