@@ -4,6 +4,7 @@ import numpy as np
 import torch.nn as nn
 from collections import defaultdict
 from sklearn.metrics import classification_report
+from utils import PAD_TOKEN
 
 
 def build_model(cfg, lang):
@@ -44,26 +45,37 @@ def train_epoch(loader, model, optimizer, slot_cr, intent_cr, clip=5):
 
 
 def eval_model(loader, model, slot_cr, intent_cr, lang):
-    from conll import evaluate
+    from conll import evaluate 
     
     model.eval()
-    losses = []
     refs_slots, hyps_slots = [], []
-    refs_int, hyps_int = [], []
+    refs_int,   hyps_int   = [], []
     with torch.no_grad():
         for batch in loader:
             slots, intents = model(batch['utterances'], batch['slots_len'])
-            losses.append((slot_cr(slots, batch['y_slots']) + intent_cr(intents, batch['intents'])).item())
+            # Intent predictions
             pred_int = torch.argmax(intents, dim=1).tolist()
-            refs_int.extend([lang.id2intent[x] for x in batch['intents'].tolist()])
-            hyps_int.extend([lang.id2intent[x] for x in pred_int])
+            refs_int.extend([lang.id2intent[i] for i in batch['intents'].tolist()])
+            hyps_int.extend([lang.id2intent[i] for i in pred_int])
+            # Slot predictions
             pred_slots = torch.argmax(slots, dim=1)
             for i, seq in enumerate(pred_slots):
-                length = batch['slots_len'][i].item()
-                utt_ids = batch['utterances'][i][:length].tolist()
-                gt_ids = batch['y_slots'][i][:length].tolist()
-                refs_slots.append([(lang.id2word[w], lang.id2slot[s]) for w,s in zip(utt_ids, gt_ids)])
-                hyps_slots.append([(lang.id2word[w], lang.id2slot[s]) for w,s in zip(utt_ids, seq[:length].tolist())])
+                L = batch['slots_len'][i].item() if isinstance(batch['slots_len'][i], torch.Tensor) else batch['slots_len'][i]
+                utt_ids = batch['utterances'][i][:L].tolist()
+                gt_ids  = batch['y_slots'][i][:L].tolist()
+                pred_ids= seq[:L].tolist()
+                ref_seq = []
+                hyp_seq = []
+                for w, g, p in zip(utt_ids, gt_ids, pred_ids):
+                    if g == PAD_TOKEN:
+                        continue
+                    word = lang.id2word.get(w, '<unk>')
+                    ref_label = lang.id2slot.get(g, 'pad')
+                    hyp_label = lang.id2slot.get(p, 'pad')
+                    ref_seq.append((word, ref_label))
+                    hyps_slots_inner = hyp_seq.append((word, hyp_label))
+                refs_slots.append(ref_seq)
+                hyps_slots.append(hyp_seq)
     slot_res = evaluate(refs_slots, hyps_slots)
     intent_res = classification_report(refs_int, hyps_int, output_dict=True, zero_division=False)
     return slot_res, intent_res

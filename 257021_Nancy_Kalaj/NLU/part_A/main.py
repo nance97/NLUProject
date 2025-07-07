@@ -18,8 +18,8 @@ if __name__ == "__main__":
 
     # wrap raw examples into Dataset
     train_ds = IntentsAndSlotsDataset(train_raw, lang)
-    dev_ds   = IntentsAndSlotsDataset(dev_raw, lang)
-    test_ds  = IntentsAndSlotsDataset(test_raw, lang)
+    dev_ds = IntentsAndSlotsDataset(dev_raw, lang)
+    test_ds = IntentsAndSlotsDataset(test_raw, lang)
 
     loaders = {
         'train': make_loader(train_ds, lang, bs=128, shuffle=True),
