@@ -4,7 +4,6 @@ import numpy as np
 import torch.nn as nn
 from collections import defaultdict
 from sklearn.metrics import classification_report
-from utils import PAD_TOKEN
 
 
 def build_model(cfg, lang):
@@ -45,37 +44,39 @@ def train_epoch(loader, model, optimizer, slot_cr, intent_cr, clip=5):
 
 
 def eval_model(loader, model, slot_cr, intent_cr, lang):
-    from conll import evaluate 
-    
+    from conll import evaluate
+
+    """
+    Evaluate joint slot and intent model, mirroring original notebook logic.
+    """
     model.eval()
-    refs_slots, hyps_slots = [], []
-    refs_int,   hyps_int   = [], []
+    refs_slots, hyp_slots = [], []
+    refs_int,   hyp_int   = [], []
     with torch.no_grad():
         for batch in loader:
             slots, intents = model(batch['utterances'], batch['slots_len'])
-            # Intent predictions
+            # Intent inference
             pred_int = torch.argmax(intents, dim=1).tolist()
             refs_int.extend([lang.id2intent[i] for i in batch['intents'].tolist()])
-            hyps_int.extend([lang.id2intent[i] for i in pred_int])
-            # Slot predictions
-            pred_slots = torch.argmax(slots, dim=1)
-            for i, seq in enumerate(pred_slots):
-                L = batch['slots_len'][i].item() if isinstance(batch['slots_len'][i], torch.Tensor) else batch['slots_len'][i]
-                utt_ids = batch['utterances'][i][:L].tolist()
-                gt_ids  = batch['y_slots'][i][:L].tolist()
-                pred_ids= seq[:L].tolist()
-                ref_seq = []
-                hyp_seq = []
-                for w, g, p in zip(utt_ids, gt_ids, pred_ids):
-                    if g == PAD_TOKEN:
-                        continue
-                    word = lang.id2word.get(w, '<unk>')
-                    ref_label = lang.id2slot.get(g, 'pad')
-                    hyp_label = lang.id2slot.get(p, 'pad')
-                    ref_seq.append((word, ref_label))
-                    hyps_slots_inner = hyp_seq.append((word, hyp_label))
-                refs_slots.append(ref_seq)
-                hyps_slots.append(hyp_seq)
-    slot_res = evaluate(refs_slots, hyps_slots)
-    intent_res = classification_report(refs_int, hyps_int, output_dict=True, zero_division=False)
+            hyp_int.extend([lang.id2intent[i] for i in pred_int])
+            # Slot inference
+            output_slots = torch.argmax(slots, dim=1)
+            for idx_seq, seq in enumerate(output_slots):
+                length = batch['slots_len'][idx_seq].item()
+                utt_ids = batch['utterances'][idx_seq][:length].tolist()
+                gt_ids  = batch['y_slots'][idx_seq][:length].tolist()
+                # Build reference slot sequence
+                gt_slots = [lang.id2slot[i] for i in gt_ids]
+                utterance = [lang.id2word[i] for i in utt_ids]
+                # Build hypothesis sequence
+                pred_tags = seq[:length].tolist()
+                hyp_seq = [lang.id2slot[p] for p in pred_tags]
+
+                # Combine into (word, tag) tuples
+                refs_slots.append(list(zip(utterance, gt_slots)))
+                hyp_slots.append(list(zip(utterance, hyp_seq)))
+    # Use conlleval for slot metrics
+    slot_res = evaluate(refs_slots, hyp_slots)
+    # Classification report for intents
+    intent_res = classification_report(refs_int, hyp_int, output_dict=True, zero_division=False)
     return slot_res, intent_res
