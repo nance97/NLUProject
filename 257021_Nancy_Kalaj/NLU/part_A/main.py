@@ -1,3 +1,4 @@
+import argparse
 from utils import ensure_atis, prepare_data
 from functions import *
 
@@ -8,13 +9,6 @@ TESTING_MODELS_PATH = "bin"
 TRAINING_MODELS_PATH = "training_results/models"
 LOG_PATH = "training_results/experiments_log.csv"
 PLOT_PATH = "training_results/plots"
-
-# Default configuration settings
-configs = {
-    "training": True,
-    "use_bidir": False,
-    "use_dropout": False,
-}
 
 # Default training hyperparameters
 params = {
@@ -30,10 +24,13 @@ params = {
 }
 
 if __name__ == "__main__":
-    # Select mode and model
-    select_config(configs)
-    model_filename = f"{get_config(configs)}.pt"
-    model_path = os.path.join(TRAINING_MODELS_PATH if configs["training"] else TESTING_MODELS_PATH, model_filename)
+    p = argparse.ArgumentParser()
+    p.add_argument("--exp", required=True)
+    p.add_argument("--test", action="store_true")
+    args = p.parse_args()
+
+    cfg_mod = __import__(f"configs.{args.exp}", fromlist=['CFG'])
+    cfg = cfg_mod.CFG
 
     ensure_atis()
 
@@ -58,40 +55,11 @@ if __name__ == "__main__":
     vocab_len = len(lang.word2id)
     print(f"Vocab size: {vocab_len} | Slots: {out_slot} | Intents: {out_int}")
 
-    if configs["training"]: # Training mode
-        # Select the hyperparameters
-        select_params(params)
-        
-        # Train the model
-        results = train_model(
-            train_loader, dev_loader, test_loader, lang, out_int, out_slot, 
-            vocab_len, criterion_slots, criterion_intents, params, configs
-        )
-
-        # Save the model
-        os.makedirs(TRAINING_MODELS_PATH, exist_ok=True)
-        model_data = {
-            "model_state_dict": results["best_model"].state_dict(),
-            "params": params,
-            "word2id": lang.word2id,
-            "slot2id": lang.slot2id,
-            "intent2id": lang.intent2id
-        }
-        torch.save(model_data, model_path)
-        print(f"Saved model data as {model_filename}\n")
-
-        # Log and plot results
-        log_results(configs, params, results, LOG_PATH)
-        plot_results(configs, results, LOG_PATH, PLOT_PATH)
-
-    else: # Testing mode
-        # Load the existing model
-        ref_model = load_model_data(model_path, out_int, out_slot, vocab_len, configs)
-
-        # Evaluate the existing model performances
-        ref_results, ref_intent, _ = eval_loop(test_loader, criterion_slots, criterion_intents, ref_model, lang)
-
-        # Show results
-        print("\n==================== Test Results ====================")
-        print(f"Results on test set of model with {get_config(configs)}: slot f1 {ref_results['total']['f']}, intent accuracy {ref_intent['accuracy']}")
-        print("=====================================================\n")
+    # Select the hyperparameters
+    select_params(params)
+    
+    # Train the model
+    results = train_model(
+        train_loader, dev_loader, test_loader, lang, out_int, out_slot, 
+        vocab_len, criterion_slots, criterion_intents, params
+    )
