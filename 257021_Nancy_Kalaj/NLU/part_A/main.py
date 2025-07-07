@@ -1,5 +1,5 @@
 import argparse, sys, os, copy, numpy as np, torch, torch.optim as optim, torch.nn as nn
-from utils import IntentsAndSlotsDataset, ensure_atis, prepare_splits, Lang, make_loader, DEVICE, PAD_TOKEN
+from utils import IntentsAndSlotsDataset, collate_fn, ensure_atis, prepare_splits, Lang, make_loader, DEVICE, PAD_TOKEN
 from functions import build_model, init_weights, train_epoch, eval_model
 
 if __name__ == "__main__":
@@ -22,9 +22,9 @@ if __name__ == "__main__":
     test_ds = IntentsAndSlotsDataset(test_raw, lang)
 
     loaders = {
-        'train': make_loader(train_ds, bs=128, shuffle=True),
-        'dev': make_loader(dev_ds, bs=64, shuffle=False),
-        'test': make_loader(test_ds, bs=64, shuffle=False),
+        'train': make_loader(train_ds, bs=128, shuffle=True, collate_fn=collate_fn),
+        'dev': make_loader(dev_ds, bs=64, shuffle=False, collate_fn=collate_fn),
+        'test': make_loader(test_ds, bs=64, shuffle=False, collate_fn=collate_fn),
     }
 
     ckpt = f"bin/{args.exp}_best.pt"
