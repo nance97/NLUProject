@@ -75,6 +75,11 @@ def eval_model(loader, model, slot_cr, intent_cr, lang):
                 # Combine into (word, tag) tuples
                 refs_slots.append(list(zip(utterance, gt_slots)))
                 hyp_slots.append(list(zip(utterance, hyp_seq)))
+
+    bad = [(w, t) for seq in hyp_slots for (w, t) in seq if t is None]
+    if bad:
+        print("⚠ Found None slot labels in hypotheses:\n", bad[:10])
+
     # Use conlleval for slot metrics
     slot_res = evaluate(refs_slots, hyp_slots)
     # Classification report for intents
