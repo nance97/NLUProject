@@ -12,6 +12,11 @@ def stats():
 def evaluate(ref, hyp, otag='O'):
     # evaluation for NLTK
     aligned = align_hyp(ref, hyp)
+    # DEBUG: find any None
+    for i, (t, g) in enumerate(aligned):
+        if t is None or g is None:
+            print(f"[BUG] aligned[{i}] = (truth={t!r}, guess={g!r})")
+            break
     return conlleval(aligned, otag=otag)
 
 

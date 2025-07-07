@@ -96,13 +96,6 @@ def eval_loop(data, criterion_slots, criterion_intents, model, lang):
                     tmp_seq.append((utterance[id_el], lang.id2slot[elem]))
                 hyp_slots.append(tmp_seq)
 
-    for i, (r, h) in enumerate(zip(ref_slots, hyp_slots)):
-        if len(r) != len(h):
-            print(f"[BAD] sentence #{i}:")
-            print("  REF:",  r)
-            print("  HYP:",  h)
-            break
-
     # DEBUG: print sizes
     print(f"[DEBUG] #sentences: ref={len(ref_slots)}, hyp={len(hyp_slots)}")
     print("[DEBUG] first 5 sentence lengths (ref vs hyp):",
