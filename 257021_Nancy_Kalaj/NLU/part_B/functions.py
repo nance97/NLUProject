@@ -4,7 +4,7 @@ import torch
 from sklearn.metrics import accuracy_score
 from model import BertForJointIntentSlot
 from conll import evaluate
-from transformers import AdamW
+from torch.optim import AdamW
 
 def set_seed(seed: int):
     random.seed(seed)
