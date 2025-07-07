@@ -95,14 +95,21 @@ def eval_loop(data, criterion_slots, criterion_intents, model, lang):
                 for id_el, elem in enumerate(to_decode):
                     tmp_seq.append((utterance[id_el], lang.id2slot[elem]))
                 hyp_slots.append(tmp_seq)
-    try:            
-        results = evaluate(ref_slots, hyp_slots)
-    except Exception as ex:
-        print("Warning:", ex)
-        ref_s = set([x[1] for x in ref_slots])
-        hyp_s = set([x[1] for x in hyp_slots])
-        print(hyp_s.difference(ref_s)) 
-        results = {"total":{"f":0}}
+
+    for i, (r, h) in enumerate(zip(ref_slots, hyp_slots)):
+        if len(r) != len(h):
+            print(f"[BAD] sentence #{i}:")
+            print("  REF:",  r)
+            print("  HYP:",  h)
+            break
+
+    # DEBUG: print sizes
+    print(f"[DEBUG] #sentences: ref={len(ref_slots)}, hyp={len(hyp_slots)}")
+    print("[DEBUG] first 5 sentence lengths (ref vs hyp):",
+          [(len(r), len(h)) for r, h in zip(ref_slots[:5], hyp_slots[:5])])
+
+    # Let it crash so you actually see the error and stack trace
+    results = evaluate(ref_slots, hyp_slots)
         
     report_intent = classification_report(ref_intents, hyp_intents, 
                                           zero_division=False, output_dict=True)
