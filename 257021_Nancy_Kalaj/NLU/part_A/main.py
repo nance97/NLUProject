@@ -17,9 +17,9 @@ if __name__ == "__main__":
     lang = Lang(train, dev, test)
 
     loaders = {
-        'train': make_loader(train, lang, bs=128, shuffle=True, collate_fn=None),
-        'dev':   make_loader(dev,   lang, bs=64,  shuffle=False, collate_fn=None),
-        'test':  make_loader(test,  lang, bs=64,  shuffle=False, collate_fn=None),
+        'train': make_loader(train, lang, bs=128, shuffle=True),
+        'dev': make_loader(dev, lang, bs=64, shuffle=False),
+        'test': make_loader(test, lang, bs=64, shuffle=False),
     }
 
     ckpt = f"bin/{args.exp}_best.pt"
