@@ -53,110 +53,110 @@ def prepare_splits(train_path, test_path, dev_portion=0.1, seed=42):
 
 
 class Lang:
+    """
+    Builds vocabularies for words, slots, and intents over train+dev+test splits.
+    """
     def __init__(self, train, dev, test, cutoff=0):
-        words = sum([x['utterance'].split() for x in train], [])
-        slots = set(sum([x['slots'].split() for x in (train+dev+test)], []))
-        intents = set([x['intent'] for x in (train+dev+test)])
-        self.word2id = self._w2id(words, cutoff)
-        self.slot2id = self._l2id(slots)
-        self.intent2id = self._l2id(intents, pad=False)
-        self.id2word = {v:k for k,v in self.word2id.items()}
-        self.id2slot = {v:k for k,v in self.slot2id.items()}
-        self.id2intent = {v:k for k,v in self.intent2id.items()}
+        # collect tokens
+        words = sum([ex['utterance'].split() for ex in (train+dev+test)], [])
+        slots = sum([ex['slots'].split()     for ex in (train+dev+test)], [])
+        intents = [ex['intent']              for ex in (train+dev+test)]
+        # build mappings
+        self.word2id   = self._build_w2id(words, cutoff)
+        self.slot2id   = self._build_l2id(slots, pad=True)
+        self.intent2id = self._build_l2id(intents, pad=False)
+        # reverse mappings
+        self.id2word   = {i:w for w,i in self.word2id.items()}
+        self.id2slot   = {i:s for s,i in self.slot2id.items()}
+        self.id2intent = {i:c for c,i in self.intent2id.items()}
 
-    def _w2id(self, elems, cutoff=0, unk=True):
-        count = Counter(elems)
+    def _build_w2id(self, tokens, cutoff, unk=True):
+        count = Counter(tokens)
         vocab = {'pad': PAD_TOKEN}
         if unk:
             vocab['unk'] = len(vocab)
-        for w, c in count.items():
-            if c > cutoff:
+        for w,f in count.items():
+            if f > cutoff:
                 vocab[w] = len(vocab)
         return vocab
 
-    def _l2id(self, elems, pad=True):
-        vocab = {'pad': PAD_TOKEN} if pad else {}
-        for e in sorted(elems):
-            vocab[e] = len(vocab)
+    def _build_l2id(self, labels, pad=True):
+        unique = []
+        seen = set()
+        for lab in labels:
+            if lab not in seen:
+                unique.append(lab)
+                seen.add(lab)
+        vocab = {}
+        if pad:
+            vocab['pad'] = PAD_TOKEN
+        for lab in unique:
+            vocab[lab] = len(vocab)
         return vocab
-    
 
 class IntentsAndSlotsDataset(Dataset):
     """
-    Wraps raw ATIS examples into tensors for LSTM model.
-    Each example: dict with keys 'utterance'(str), 'slots'(str), 'intent'(str).
+    Wraps raw ATIS examples into token ID sequences using Lang.
     """
     def __init__(self, examples, lang):
+        self.examples = examples
         self.lang = lang
-        self.utterances = []
-        self.slots = []
-        self.intents = []
-        for ex in examples:
-            self.utterances.append(ex['utterance'].split())
-            self.slots.append(ex['slots'].split())
-            self.intents.append(ex['intent'])
-        self.utt_ids = self._seq2ids(self.utterances, lang.word2id)
-        self.slot_ids = self._seq2ids(self.slots,    lang.slot2id)
-        self.intent_ids = [lang.intent2id[i] for i in self.intents]
+        self.utt_ids = [self._map_seq(ex['utterance'].split(), lang.word2id) for ex in examples]
+        self.slot_ids= [self._map_seq(ex['slots'].split(),    lang.slot2id) for ex in examples]
+        self.int_ids = [lang.intent2id[ex['intent']]                       for ex in examples]
 
     def __len__(self):
-        return len(self.utterances)
+        return len(self.examples)
 
     def __getitem__(self, idx):
         return {
             'utterance': self.utt_ids[idx],
             'slots':     self.slot_ids[idx],
-            'intent':    self.intent_ids[idx]
+            'intent':    self.int_ids[idx]
         }
 
-    def _seq2ids(self, sequences, mapper):
-        res = []
-        for seq in sequences:
-            ids = []
-            for token in seq:
-                ids.append(mapper.get(token, mapper.get('unk', PAD_TOKEN)))
-            res.append(ids)
-        return res
+    def _map_seq(self, tokens, mapper):
+        return [mapper.get(tok, mapper.get('unk', PAD_TOKEN)) for tok in tokens]
 
-    
+# notebook-style collate_fn
+import torch
+
 def collate_fn(data):
+    """
+    Notebook-style collate: returns only processed tensors for training/evaluation.
+    """
+    # inner merge same as in notebook
     def merge(sequences):
-        '''
-        merge from batch * sent_len to batch * max_len
-        '''
         lengths = [len(seq) for seq in sequences]
-        max_len = 1 if max(lengths)==0 else max(lengths)
-        # Pad token is zero in our case
-        # So we create a matrix full of PAD_TOKEN (i.e. 0) with the shape
-        # batch_size X maximum length of a sequence
-        padded_seqs = torch.LongTensor(len(sequences),max_len).fill_(PAD_TOKEN)
+        max_len = 1 if max(lengths) == 0 else max(lengths)
+        padded = torch.full((len(sequences), max_len), PAD_TOKEN, dtype=torch.long)
         for i, seq in enumerate(sequences):
-            end = lengths[i]
-            padded_seqs[i, :end] = torch.tensor(seq, dtype=torch.long)
-        # print(padded_seqs)
-        padded_seqs = padded_seqs.detach()  # We remove these tensors from the computational graph
-        return padded_seqs, lengths
-    # Sort data by seq lengths
-    data.sort(key=lambda x: len(x['utterance']), reverse=True)
-    new_item = {}
-    for key in data[0].keys():
-        new_item[key] = [d[key] for d in data]
+            padded[i, :lengths[i]] = torch.tensor(seq, dtype=torch.long)
+        return padded, lengths
 
-    # We just need one length for packed pad seq, since len(utt) == len(slots)
-    src_utt, _ = merge(new_item['utterance'])
-    y_slots, y_lengths = merge(new_item["slots"])
-    intent = torch.LongTensor(new_item["intent"])
+    # extract raw lists
+    utterances_list = [d['utterance'] for d in data]
+    slots_list      = [d['slots']     for d in data]
+    intents_list    = [d['intent']    for d in data]
 
-    src_utt = src_utt.to(DEVICE) # We load the Tensor on our selected device
-    y_slots = y_slots.to(DEVICE)
-    intent = intent.to(DEVICE)
-    y_lengths = torch.LongTensor(y_lengths).to(DEVICE)
+    # sort by utterance length descending
+    sorted_idx = sorted(range(len(utterances_list)), key=lambda i: len(utterances_list[i]), reverse=True)
+    utterances_list = [utterances_list[i] for i in sorted_idx]
+    slots_list      = [slots_list[i]      for i in sorted_idx]
+    intents_list    = [intents_list[i]    for i in sorted_idx]
 
-    new_item["utterances"] = src_utt
-    new_item["intents"] = intent
-    new_item["y_slots"] = y_slots
-    new_item["slots_len"] = y_lengths
-    return new_item
+    # merge into padded tensors
+    src_utt, lengths   = merge(utterances_list)
+    y_slots, _         = merge(slots_list)
+    intent_tensor      = torch.tensor(intents_list, dtype=torch.long)
+
+    # return processed batch
+    return {
+        'utterances': src_utt.to(DEVICE),
+        'slots_len':  torch.tensor(lengths, dtype=torch.long).to(DEVICE),
+        'y_slots':    y_slots.to(DEVICE),
+        'intents':    intent_tensor.to(DEVICE)
+    }
 
 
 def make_loader(dataset, lang, bs=32, shuffle=False, collate_fn=collate_fn):
