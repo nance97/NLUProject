@@ -9,7 +9,7 @@ from functions import set_seed, run_bert_multi
 from datetime import datetime
 import pickle
 
-def main():
+if __name__ == "__main__":
     # Parse command-line arguments for batch size, sequence length, epochs, learning rate, and test mode
     p = argparse.ArgumentParser()
     p.add_argument("--batch_size", type=int, default=16)
@@ -113,6 +113,3 @@ def main():
     with open(f"bin/lang_{stamp}.pkl", "wb") as f:
         pickle.dump(lang, f)
     print(f"Best BERT model saved to {save_path}")
-
-    if __name__ == "__main__": 
-        main()
