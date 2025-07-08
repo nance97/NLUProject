@@ -7,7 +7,7 @@ from utils import prepare_data
 from model import BertJointNLU
 from functions import set_seed, run_bert_multi
 from datetime import datetime
-import pickle
+import pickle 
 
 if __name__ == "__main__":
     # Parse command-line arguments for batch size, sequence length, epochs, learning rate, and test mode
