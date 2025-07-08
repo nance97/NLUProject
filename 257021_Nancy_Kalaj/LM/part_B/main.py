@@ -34,8 +34,8 @@ if __name__ == "__main__":
     # Create data loaders with padding and batching
     pad_idx = lang.word2id["<pad>"]
     loader_train = make_loader(ptb_train, batch_size=64, pad_token=pad_idx, shuffle=True)
-    loader_dev   = make_loader(ptb_dev,   batch_size=128, pad_token=pad_idx)
-    loader_test  = make_loader(ptb_test,  batch_size=128, pad_token=pad_idx)
+    loader_dev = make_loader(ptb_dev, batch_size=128, pad_token=pad_idx)
+    loader_test = make_loader(ptb_test, batch_size=128, pad_token=pad_idx)
 
     # Build the model according to cfg (RNN or LSTM, with dropouts, tying, etc.), move to DEVICE
     model = build_model(cfg, len(lang.word2id), pad_idx).to(DEVICE)

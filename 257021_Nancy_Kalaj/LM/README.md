@@ -32,11 +32,11 @@ This will:
 To skip training and only evaluate a saved checkpoint:
 
 ```bash
-python LM/part_A/main.py --exp exp3 --test
+python LM/part_A/main.py --exp exp1 --test
 ```
 
 ### Configurations
 
-All experiment-specific settings live under `configs/expX.py`. You can inspect or duplicate them to define new variants.
+All experiment-specific settings live under `configs/expX.py`.
 
 ---

@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import os
 from tqdm import tqdm
 import numpy as np
 import torch.optim as optim
@@ -9,11 +8,10 @@ from conll import evaluate
 from sklearn.metrics import classification_report
 
 from model import *
-from utils import PAD_TOKEN
+from utils import DEVICE, PAD_TOKEN
 
-DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-# Initializes the weights of the model layers
+# Custom weight initialization for all supported modules in the model
 def init_weights(mat):
     for m in mat.modules():
         if type(m) in [nn.GRU, nn.LSTM, nn.RNN]:
@@ -31,10 +29,10 @@ def init_weights(mat):
         else:
             if type(m) in [nn.Linear]:
                 torch.nn.init.uniform_(m.weight, -0.01, 0.01)
-                if m.bias != None:
+                if m.bias is not None:
                     m.bias.data.fill_(0.01)
 
-# Initializes the model with the provided settings
+# Constructs and returns a ModelIAS instance with the given hyperparameters and configuration
 def build_model(out_slot, out_int, vocab_len, cfg):
     from model import ModelIAS
     model = ModelIAS(
@@ -43,31 +41,30 @@ def build_model(out_slot, out_int, vocab_len, cfg):
         n_intents=out_int, pad_idx=PAD_TOKEN,
         drop=cfg['dropout']
     ).to(DEVICE)
-
     return model
 
-# Trains the model for one epoch over the provided data
+# Performs one full pass over the training set, optimizing the model weights
 def train_loop(data, optimizer, criterion_slots, criterion_intents, model, clip=5):
-    model.train() # Set model to training mode
+    model.train()
     loss_array = []
 
     for sample in data:
-        optimizer.zero_grad() # Zeroing the gradient
-        slots, intent = model(sample['utterances'], sample['slots_len']) # Forward pass
+        optimizer.zero_grad()
+        slots, intent = model(sample['utterances'], sample['slots_len'])
         loss_intent = criterion_intents(intent, sample['intents'])
         loss_slot = criterion_slots(slots, sample['y_slots'])
-        loss = loss_intent + loss_slot # Compute loss; since it's joint training, it is the sum of the individual losses
+        # Combine intent and slot losses for joint optimization
+        loss = loss_intent + loss_slot
         loss_array.append(loss.item())
-        loss.backward() # Compute the gradient
-        torch.nn.utils.clip_grad_norm_(model.parameters(), clip) # clip the gradient to avoid exploding gradients
-        optimizer.step() # Update the weights
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), clip)  # Prevent exploding gradients
+        optimizer.step()
 
     return loss_array
 
-# Evaluates the model over the provided data
+# Evaluates the model
 def eval_loop(data, criterion_slots, criterion_intents, model, lang):
-    model.eval() # Set the model to evaluation mode
-    loss_array = []
+    model.eval()
     
     ref_intents = []
     hyp_intents = []
@@ -75,21 +72,20 @@ def eval_loop(data, criterion_slots, criterion_intents, model, lang):
     ref_slots = []
     hyp_slots = []
 
-    with torch.no_grad(): # Disable gradient computation
+    with torch.no_grad():
         for sample in data:
-            slots, intents = model(sample['utterances'], sample['slots_len']) # Forward pass
+            slots, intents = model(sample['utterances'], sample['slots_len'])  # Model inference
             loss_intent = criterion_intents(intents, sample['intents'])
             loss_slot = criterion_slots(slots, sample['y_slots'])
-            loss = loss_intent + loss_slot # Compute loss
-            loss_array.append(loss.item())
+            loss = loss_intent + loss_slot
 
-            # Intent inference
+            # Collect ground-truth and predicted intents for reporting
             out_intents = [lang.id2intent[x] for x in torch.argmax(intents, dim=1).tolist()] 
             gt_intents = [lang.id2intent[x] for x in sample['intents'].tolist()]
             ref_intents.extend(gt_intents)
             hyp_intents.extend(out_intents)
             
-            # Slot inference 
+            # Collect ground-truth and predicted slot labels for CoNLL evaluation
             output_slots = torch.argmax(slots, dim=1)
             for id_seq, seq in enumerate(output_slots):
                 length = sample['slots_len'].tolist()[id_seq]
@@ -114,74 +110,69 @@ def eval_loop(data, criterion_slots, criterion_intents, model, lang):
         
     report_intent = classification_report(ref_intents, hyp_intents, 
                                           zero_division=False, output_dict=True)
-    return results, report_intent, loss_array
+    return results, report_intent
 
-# Runs the whole training process for the model for multiple times (= runs) and provides a final evaluation on its average performances
-def train_model(train_loader, dev_loader, test_loader, lang, out_int, out_slot, vocab_len, criterion_slots, criterion_intents, cfg):
-    results = {
+# Main experiment runner: Trains and validates the model across multiple runs, tracking metrics and best-performing model
+def train_model(train_data, val_data, test_data, vocab, intent_count, slot_count, vocab_dim, loss_slots, loss_intents, config):
+    stats = {
         "best_model": None,
-        "slot_f1": 0,
-        "int_acc": 0,
-        "losses_dev": [],
-        "losses_train": [],
-        "sampled_epochs": [],
+        "slot_f1": 0.0,
+        "int_acc": 0.0,
     }
-    slot_f1s, intent_acc, best_models = [], [], []
+    slot_scores = []
+    intent_scores = []
+    run_models = []
 
-    for run in tqdm(range(0, 5)):
-        model = build_model(out_slot, out_int, vocab_len, cfg)
+    # run multiple times to check stability
+    for run_no in tqdm(range(5)):
+        # initialize model and optimizer
+        model = build_model(slot_count, intent_count, vocab_dim, config)
         model.apply(init_weights)
-        Optim = getattr(optim, cfg['optimizer'])
-        optimizer = Optim(model.parameters(), lr=cfg['lr'], weight_decay=cfg.get('weight_decay',0.0))
-        
+        OptimizerCls = getattr(optim, config["optimizer"])
+        optimizer = OptimizerCls(model.parameters(), lr=config["lr"], weight_decay=config.get("weight_decay", 0.0))
+
+        best_val_f1 = 0.0
+        best_val_model = None
         patience = 3
-        losses_train = []
-        losses_dev = []
-        sampled_epochs = []
-        best_f1 = 0
-        best_model = None
 
-        for epoch in tqdm(range(1,100)):
-                loss = train_loop(train_loader, optimizer, criterion_slots, criterion_intents, model, clip=5)
-                if epoch % 5 == 0: 
-                    sampled_epochs.append(epoch)
-                    losses_train.append(np.asarray(loss).mean())
-                    results_dev, _, loss_dev = eval_loop(dev_loader, criterion_slots, criterion_intents, model, lang)
-                    losses_dev.append(np.asarray(loss_dev).mean())
-                    
-                    f1 = results_dev['total']['f']
-                    if f1 > best_f1:
-                        best_f1 = f1
-                        best_model = copy.deepcopy(model).to('cpu')
-                        patience = 3
-                    else:
-                        patience -= 1
-                    if patience <= 0:
-                        break 
-        
-        best_model.to(DEVICE)
-        results_test, intent_test, _ = eval_loop(test_loader, criterion_slots, criterion_intents, best_model, lang)   
-        intent_acc.append(intent_test['accuracy'])
-        slot_f1s.append(results_test['total']['f'])
-        best_models.append((best_model, best_f1))
-        results["losses_dev"].append(losses_dev)
-        results["losses_train"].append(losses_train)
-        results["sampled_epochs"].append(sampled_epochs)
+        # epoch loop with early stopping on validation slot F1
+        for epoch in tqdm(range(1, 100), desc=f"Run {run_no+1} Epochs"):
+            losses = train_loop(train_data, optimizer, loss_slots, loss_intents, model, clip=5)
 
-        print('Slot F1', results_test['total']['f'])
-        print('Intent Acc', intent_test['accuracy'])
+            if epoch % 5 == 0:
+                val_res, _ = eval_loop(val_data, loss_slots, loss_intents, model, vocab)
+                val_f1 = val_res["total"]["f"]
 
-    # Compute and store mean for slot_f1s and intent accuracy
-    slot_f1s = np.asarray(slot_f1s)
-    intent_acc = np.asarray(intent_acc)
+                if val_f1 > best_val_f1:
+                    best_val_f1 = val_f1
+                    best_val_model = copy.deepcopy(model).cpu()
+                    patience = 3
+                else:
+                    patience -= 1
+                    if patience == 0:
+                        break
 
-    results["slot_f1"] = round(slot_f1s.mean(),3)
-    results["int_acc"] = round(intent_acc.mean(), 3)
+        # test the best validation model
+        best_val_model.to(DEVICE)
+        test_res, test_intent_rep = eval_loop(test_data, loss_slots, loss_intents, best_val_model, vocab)
+        slot_scores.append(test_res["total"]["f"])
+        intent_scores.append(test_intent_rep["accuracy"])
+        run_models.append((best_val_model, best_val_f1))
 
-    best_model, _ = max(best_models, key=lambda x: x[1])
-    results["best_model"] = copy.deepcopy(best_model).to('cpu')
+        print(f"Run {run_no+1}: Test Slot F1={test_res['total']['f']:.3f}, Intent Acc={test_intent_rep['accuracy']:.3f}")
 
-    print('Slot F1', results['slot_f1'], '+-', round(slot_f1s.std(),3))
-    print('Intent Acc', results['int_acc'], '+-', round(slot_f1s.std(), 3))
+    # aggregate across runs
+    slot_arr = np.array(slot_scores)
+    intent_arr = np.array(intent_scores)
+    stats["slot_f1"] = round(slot_arr.mean(), 3)
+    stats["int_acc"] = round(intent_arr.mean(), 3)
 
-    return results
+    # pick the top model
+    top_model, _ = max(run_models, key=lambda x: x[1])
+    stats["best_model"] = copy.deepcopy(top_model).cpu()
+
+    print(f"Aggregated Slot F1: {stats['slot_f1']} ± {round(slot_arr.std(),3)}")
+    print(f"Aggregated Intent Acc: {stats['int_acc']} ± {round(intent_arr.std(),3)}")
+
+    return stats
+
