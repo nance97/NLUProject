@@ -61,7 +61,7 @@ def main():
         slot_res, intent_acc = eval_loop_bert(test_loader, model, tokenizer, lang, device)
         print(f"\nTest slot-filling F1 : {slot_res['total']['f']:.4f}")
         print(f"Test intent accuracy  : {intent_acc:.4f}")
-        return
+        exit(0)
 
     # Train and evaluate the model for multiple runs
     slot_f1s, intent_accs, model_states = run_bert_multi(

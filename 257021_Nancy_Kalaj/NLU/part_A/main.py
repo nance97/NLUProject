@@ -43,6 +43,7 @@ if __name__ == "__main__":
         results_test, intent_report = eval_loop(test_loader, criterion_slots, criterion_intents, model, lang)
         print(f"\nTest slot-filling F1: {results_test['total']['f']:.3f}")
         print(f"Test intent accuracy : {intent_report['accuracy']:.3f}")
+        exit(0)
     
     # Train
     results = train_model(
