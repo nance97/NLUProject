@@ -148,15 +148,17 @@ def prepare_data(
     test_path: str,
     tokenizer_name: str = "bert-base-uncased",
     max_length: int = 50,
-    batch_size: int = 16
+    batch_size: int = 16,
+    lang=None
 ):
     ensure_atis(os.path.dirname(train_path))
     train_raw = load_data(train_path)
-    test_raw  = load_data(test_path)
+    test_raw = load_data(test_path)
     train_raw, dev_raw = create_raws(train_raw)
 
-    corpus = train_raw + dev_raw + test_raw
-    lang = Lang(corpus)
+    if lang is None:
+        corpus = train_raw + dev_raw + test_raw
+        lang = Lang(corpus)
     tokenizer = BertTokenizerFast.from_pretrained(tokenizer_name)
 
     train_ds = ATISJointDataset(train_raw, tokenizer, lang, max_length)

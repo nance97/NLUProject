@@ -7,6 +7,7 @@ from utils import prepare_data
 from model import BertJointNLU
 from functions import set_seed, run_bert_multi
 from datetime import datetime
+import pickle
 
 def main():
     # Parse command-line arguments for batch size, sequence length, epochs, learning rate, and test mode
@@ -39,23 +40,31 @@ def main():
 
     # TEST MODE: load saved model and evaluate on test set
     if args.test:
+        if args.model_path is None:
+            raise ValueError("Must specify --model_path for testing")
+
+        state = torch.load(args.model_path, map_location=device)
+        lang_path = args.model_path.replace(".pt", "_lang.pkl")
+        with open(lang_path, "rb") as f:
+            lang = pickle.load(f)
+
+        tokenizer, _, _, test_loader, _ = prepare_data(
+            "dataset/ATIS/train.json",
+            "dataset/ATIS/test.json",
+            tokenizer_name="bert-base-uncased",
+            max_length=args.max_length,
+            batch_size=args.batch_size,
+            lang=lang
+        )
+
         model = BertJointNLU(
             "bert-base-uncased",
             n_intents=len(lang.intent2id),
             n_slots=len(lang.slot2id),
             dropout=0.1
         ).to(device)
-
-        if args.model_path:
-            load_path = args.model_path
-        else:
-            raise ValueError("You must specify --model_path when using --test")
-
-        if not os.path.exists(load_path):
-            raise FileNotFoundError(f"No model found at {load_path}")
-
-        state = torch.load(load_path, map_location=device)
         model.load_state_dict(state)
+        model.eval()
 
         from functions import eval_loop_bert
         slot_res, intent_acc = eval_loop_bert(test_loader, model, tokenizer, lang, device)
@@ -101,4 +110,9 @@ def main():
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     save_path = f"bin/best_bert_{stamp}.pt"
     torch.save(model.state_dict(), save_path)
+    with open(f"bin/lang_{stamp}.pkl", "wb") as f:
+        pickle.dump(lang, f)
     print(f"Best BERT model saved to {save_path}")
+
+if __name__ == "__main__": 
+    main()
