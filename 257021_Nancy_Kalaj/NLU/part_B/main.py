@@ -110,6 +110,8 @@ if __name__ == "__main__":
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     save_path = f"bin/best_bert_{stamp}.pt"
     torch.save(model.state_dict(), save_path)
-    with open(f"bin/lang_{stamp}.pkl", "wb") as f:
+    
+    lang_path = save_path.replace(".pt", "_lang.pkl")
+    with open(lang_path, "wb") as f:
         pickle.dump(lang, f)
     print(f"Best BERT model saved to {save_path}")
