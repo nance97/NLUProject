@@ -30,15 +30,16 @@ if __name__ == "__main__":
     # Load the best model from disk and run evaluation on the test set
     if args.test:
         ckpt = torch.load(save_path, map_location=DEVICE)
+        cfg  = ckpt["cfg"]
+        with open(f"bin/{args.exp}_lang.pkl", "rb") as f:
+            lang = pickle.load(f)
 
-        lang = ckpt["lang"]
         train_loader, dev_loader, test_loader, _ = prepare_loaders(
             "dataset/ATIS/train.json",
             "dataset/ATIS/test.json",
             lang=lang
         )
 
-        cfg = ckpt["cfg"]
         model = build_model(out_slot, out_int, vocab_len, cfg).to(DEVICE)
 
         model.load_state_dict(ckpt["model_state_dict"])
@@ -58,7 +59,8 @@ if __name__ == "__main__":
     ckpt = {
         "model_state_dict": results["best_model"].state_dict(),
         "cfg": cfg,
-        "lang": lang
     }
     torch.save(ckpt, save_path)
+    with open(f"bin/{args.exp}_lang.pkl", "wb") as f:
+        pickle.dump(lang, f)
     print(f"Best model saved to {save_path}")
