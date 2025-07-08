@@ -6,6 +6,7 @@ import torch.optim as optim
 import copy
 from conll import evaluate
 from sklearn.metrics import classification_report
+import pickle
 
 from model import *
 from utils import DEVICE, PAD_TOKEN

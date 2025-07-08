@@ -171,7 +171,7 @@ def prepare_splits(tmp_train_raw):
 
     return train_raw, dev_raw
 
-def prepare_loaders(train_path, test_path, batch_size=128):
+def prepare_loaders(train_path, test_path, batch_size=128, lang=None):
     raw_train = load_data(train_path)
     raw_test = load_data(test_path)
 
@@ -179,11 +179,12 @@ def prepare_loaders(train_path, test_path, batch_size=128):
     train_raw, dev_raw = prepare_splits(raw_train)
 
     # build vocab on all words, slots and intents across splits
-    all_words = sum([ex["utterance"].split() for ex in train_raw], [])
-    corpus = train_raw + dev_raw + raw_test
-    all_slots = set(sum([ex["slots"].split() for ex in corpus], []))
-    all_ints = set([ex["intent"] for ex in corpus])
-    lang = Lang(all_words, all_ints, all_slots, cutoff=0)
+    if lang is None:
+        all_words = sum([ex["utterance"].split() for ex in train_raw], [])
+        corpus = train_raw + dev_raw + raw_test
+        all_slots = set(sum([ex["slots"].split() for ex in corpus], []))
+        all_ints = set([ex["intent"] for ex in corpus])
+        lang = Lang(all_words, all_ints, all_slots, cutoff=0)
 
     train_ds = IntentsAndSlots(train_raw, lang)
     dev_ds = IntentsAndSlots(dev_raw, lang)
