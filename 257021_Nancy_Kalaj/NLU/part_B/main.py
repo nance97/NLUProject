@@ -114,5 +114,5 @@ def main():
         pickle.dump(lang, f)
     print(f"Best BERT model saved to {save_path}")
 
-if __name__ == "__main__": 
-    main()
+    if __name__ == "__main__": 
+        main()
